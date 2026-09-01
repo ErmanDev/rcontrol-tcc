@@ -29,10 +29,16 @@ SERVO_MAX_DUTY_U16 = 7803
 # Positional hobby servos at 50 Hz — not continuous-rotation 360° units.
 LOADER_SERVO_1_PIN = 16  # GP16, physical 21
 LOADER_SERVO_2_PIN = 17  # GP17, physical 22
-LOADER_DOWN_ANGLE = 20
-LOADER_UP_ANGLE = 160
-# True if servo 2's horn is mounted mirrored (sends 180 - angle).
-LOADER_SERVO_2_INVERT = False
+# Photo rest pose = DOWN: white bucket horizontal / level with the chassis top.
+# Centered SG90 horns are ~90°. Do not treat that photo as UP.
+LOADER_DOWN_ANGLE = 90
+# Modest raise of the front plate from rest (+60°), clamped 0–180.
+# Not a 360° continuous servo and not a full 180 sweep (binds on the chassis).
+# If UP drives the bucket into the frame instead of lifting, set this to 30.
+LOADER_UP_ANGLE = 150
+# Servos sit on opposite sides of the same hinge, so GP17 is mirrored.
+# If the bucket twists instead of pivoting, set this False (or swap the plugs).
+LOADER_SERVO_2_INVERT = True
 
 PWM_FREQ_HZ = 1000
 INITIAL_SPEED = 25000
@@ -236,8 +242,11 @@ class LoaderBucket:
         self._set_angle(LOADER_UP_ANGLE)
         self._up = True
         print(
-            "Loader -> UP GP{}+GP{} angle={}".format(
-                LOADER_SERVO_1_PIN, LOADER_SERVO_2_PIN, LOADER_UP_ANGLE
+            "Loader -> UP GP{}+GP{} angle={} invert2={}".format(
+                LOADER_SERVO_1_PIN,
+                LOADER_SERVO_2_PIN,
+                LOADER_UP_ANGLE,
+                LOADER_SERVO_2_INVERT,
             )
         )
 
@@ -245,8 +254,11 @@ class LoaderBucket:
         self._set_angle(LOADER_DOWN_ANGLE)
         self._up = False
         print(
-            "Loader -> DOWN GP{}+GP{} angle={}".format(
-                LOADER_SERVO_1_PIN, LOADER_SERVO_2_PIN, LOADER_DOWN_ANGLE
+            "Loader -> DOWN GP{}+GP{} angle={} invert2={}".format(
+                LOADER_SERVO_1_PIN,
+                LOADER_SERVO_2_PIN,
+                LOADER_DOWN_ANGLE,
+                LOADER_SERVO_2_INVERT,
             )
         )
 

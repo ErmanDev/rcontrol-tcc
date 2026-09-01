@@ -88,20 +88,28 @@ class LoaderFirmwareTest(unittest.TestCase):
         self.assertGreater(mid, 1950)
         self.assertLess(mid, 7803)
 
-    def test_boot_is_down_and_both_servos_move_together(self):
+    def test_boot_is_down_and_servos_are_mirrored(self):
+        self.assertTrue(FW.LOADER_SERVO_2_INVERT)
+        self.assertEqual(FW.LOADER_DOWN_ANGLE, 90)
+        self.assertEqual(FW.LOADER_UP_ANGLE, 150)
+        self.assertLess(abs(FW.LOADER_UP_ANGLE - FW.LOADER_DOWN_ANGLE), 90)
+
         bucket = FW.LoaderBucket()
         self.assertFalse(bucket._up)
         self.assertEqual(bucket._pwm1._freq, 50)
         self.assertEqual(bucket._pwm2._freq, 50)
+        # Rest pose is ~90° on both horns (180-90 == 90) — the photo, not UP.
         down_duty = FW._positional_servo_duty_u16(FW.LOADER_DOWN_ANGLE)
         self.assertEqual(bucket._pwm1.duty, down_duty)
         self.assertEqual(bucket._pwm2.duty, down_duty)
 
         bucket.up()
-        up_duty = FW._positional_servo_duty_u16(FW.LOADER_UP_ANGLE)
         self.assertTrue(bucket._up)
-        self.assertEqual(bucket._pwm1.duty, up_duty)
-        self.assertEqual(bucket._pwm2.duty, up_duty)
+        up1 = FW._positional_servo_duty_u16(FW.LOADER_UP_ANGLE)
+        up2 = FW._positional_servo_duty_u16(180 - FW.LOADER_UP_ANGLE)
+        self.assertEqual(bucket._pwm1.duty, up1)
+        self.assertEqual(bucket._pwm2.duty, up2)
+        self.assertNotEqual(up1, up2)
 
     def test_loader_commands_work_in_automatic(self):
         motors = FW.Motors()
