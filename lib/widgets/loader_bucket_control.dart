@@ -1,20 +1,21 @@
 import 'package:flutter/material.dart';
 
-/// Compact labeled Material [Switch] for the mower blade.
+/// Compact two-position loader-bucket control (hobby-servo Up / Down).
 ///
-/// Sized for landscape phones: shrink-wrapped tap target, optional [compact]
-/// density, and a single horizontal row so it can sit under MANUAL/AUTOMATIC
-/// without stealing the D-pad / e-stop column.
-class BladeSwitch extends StatelessWidget {
-  const BladeSwitch({
+/// Not a rotary knob and not full-bleed: [Row.mainAxisSize] is min so the
+/// chip is only as wide as the label + switch. Sit it in a centered row
+/// under MANUAL/AUTOMATIC.
+class LoaderBucketControl extends StatelessWidget {
+  const LoaderBucketControl({
     super.key,
-    required this.value,
+    required this.up,
     required this.enabled,
     required this.onChanged,
     this.compact = false,
   });
 
-  final bool value;
+  /// `true` = bucket up, `false` = bucket down (closed / safe).
+  final bool up;
   final bool enabled;
   final ValueChanged<bool> onChanged;
   final bool compact;
@@ -26,18 +27,19 @@ class BladeSwitch extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final labelColor = enabled ? Colors.white : Colors.white54;
-    final statusColor = !enabled
+    final downColor = !enabled
         ? Colors.white38
-        : (value ? _accent : Colors.white54);
+        : (!up ? _accent : Colors.white54);
+    final upColor = !enabled
+        ? Colors.white38
+        : (up ? _accent : Colors.white54);
 
     return DecoratedBox(
       decoration: BoxDecoration(
         color: _panel,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: value && enabled
-              ? _accent.withValues(alpha: 0.55)
-              : _border,
+          color: up && enabled ? _accent.withValues(alpha: 0.55) : _border,
         ),
       ),
       child: Padding(
@@ -46,41 +48,49 @@ class BladeSwitch extends StatelessWidget {
           vertical: compact ? 2 : 6,
         ),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              Icons.grass,
+              Icons.agriculture,
               size: compact ? 18 : 22,
               color: enabled
-                  ? (value ? _accent : Colors.white70)
+                  ? (up ? _accent : Colors.white70)
                   : Colors.white38,
             ),
             SizedBox(width: compact ? 8 : 10),
-            Expanded(
-              child: Text(
-                'Blade',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: compact ? 13 : 15,
-                  color: labelColor,
-                ),
+            Text(
+              'Loader Bucket',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: compact ? 13 : 15,
+                color: labelColor,
               ),
             ),
+            SizedBox(width: compact ? 10 : 14),
             Text(
-              value ? 'ON' : 'OFF',
+              'Down',
               style: TextStyle(
                 fontWeight: FontWeight.w700,
                 fontSize: compact ? 11 : 12,
-                letterSpacing: 0.6,
-                color: statusColor,
+                letterSpacing: 0.4,
+                color: downColor,
               ),
             ),
-            const SizedBox(width: 4),
             Switch(
-              value: value,
+              value: up,
               onChanged: enabled ? onChanged : null,
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               activeThumbColor: _accent,
               activeTrackColor: _accent.withValues(alpha: 0.45),
+            ),
+            Text(
+              'Up',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: compact ? 11 : 12,
+                letterSpacing: 0.4,
+                color: upColor,
+              ),
             ),
           ],
         ),

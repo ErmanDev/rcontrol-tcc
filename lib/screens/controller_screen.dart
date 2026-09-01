@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../services/bluetooth_service.dart';
-import '../widgets/blade_switch.dart';
 import '../widgets/direction_button.dart';
+import '../widgets/loader_bucket_control.dart';
 import '../widgets/emergency_stop_button.dart';
 import '../widgets/speed_slider.dart';
 import 'connection_screen.dart';
@@ -180,11 +180,15 @@ class _ControllerScreenState extends State<ControllerScreen> {
                       ],
                     ),
                     SizedBox(height: sectionGap),
-                    BladeSwitch(
-                      value: bt.bladeOn,
-                      enabled: bt.isConnected,
-                      compact: compact,
-                      onChanged: (on) => _safeSend(() => bt.setBlade(on)),
+                    Align(
+                      alignment: Alignment.center,
+                      child: LoaderBucketControl(
+                        up: bt.loaderUp,
+                        enabled: bt.isConnected,
+                        compact: compact,
+                        onChanged: (up) =>
+                            _safeSend(() => bt.setLoaderUp(up)),
+                      ),
                     ),
                     SizedBox(height: sectionGap),
                     Row(

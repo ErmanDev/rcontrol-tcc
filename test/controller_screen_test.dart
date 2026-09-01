@@ -7,8 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:remote_controller/screens/controller_screen.dart';
 import 'package:remote_controller/services/bluetooth_service.dart';
-import 'package:remote_controller/widgets/blade_switch.dart';
 import 'package:remote_controller/widgets/emergency_stop_button.dart';
+import 'package:remote_controller/widgets/loader_bucket_control.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -69,7 +69,7 @@ void main() {
     });
   }
 
-  testWidgets('blade switch is visible and disabled when disconnected', (
+  testWidgets('loader bucket is visible and disabled when disconnected', (
     tester,
   ) async {
     final bt = BluetoothService.fake();
@@ -80,16 +80,19 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    expect(find.byType(BladeSwitch), findsOneWidget);
-    expect(find.text('Blade'), findsOneWidget);
-    expect(find.text('OFF'), findsOneWidget);
+    expect(find.byType(LoaderBucketControl), findsOneWidget);
+    expect(find.text('Loader Bucket'), findsOneWidget);
+    expect(find.text('Down'), findsOneWidget);
+    expect(find.text('Up'), findsOneWidget);
+    expect(find.text('Blade'), findsNothing);
+    expect(find.byType(Slider), findsOneWidget); // speed only, not a rotary
 
     final sw = tester.widget<Switch>(find.byType(Switch));
     expect(sw.onChanged, isNull);
     expect(sw.value, isFalse);
   });
 
-  testWidgets('blade switch is enabled in manual and automatic when connected', (
+  testWidgets('loader bucket is enabled in manual and automatic when connected', (
     tester,
   ) async {
     final bt = BluetoothService.fake()..debugSetConnected();
@@ -105,12 +108,12 @@ void main() {
     await tester.tap(find.text('AUTOMATIC'));
     await tester.pumpAndSettle();
     expect(bt.automaticMode, isTrue);
-    expect(find.byType(BladeSwitch), findsOneWidget);
+    expect(find.byType(LoaderBucketControl), findsOneWidget);
     sw = tester.widget<Switch>(find.byType(Switch));
     expect(sw.onChanged, isNotNull);
   });
 
-  testWidgets('toggling blade sends BLADE|ON and BLADE|OFF', (tester) async {
+  testWidgets('toggling loader sends LOADER|UP and LOADER|DOWN', (tester) async {
     final bt = BluetoothService.fake()..debugSetConnected();
     addTearDown(bt.dispose);
     setLandscape(tester);
@@ -120,18 +123,16 @@ void main() {
 
     await tester.tap(find.byType(Switch));
     await tester.pumpAndSettle();
-    expect(bt.bladeOn, isTrue);
-    expect(bt.sentCommands, ['BLADE|ON']);
-    expect(find.text('ON'), findsOneWidget);
+    expect(bt.loaderUp, isTrue);
+    expect(bt.sentCommands, ['LOADER|UP']);
 
     await tester.tap(find.byType(Switch));
     await tester.pumpAndSettle();
-    expect(bt.bladeOn, isFalse);
-    expect(bt.sentCommands, ['BLADE|ON', 'BLADE|OFF']);
-    expect(find.text('OFF'), findsOneWidget);
+    expect(bt.loaderUp, isFalse);
+    expect(bt.sentCommands, ['LOADER|UP', 'LOADER|DOWN']);
   });
 
-  testWidgets('emergency stop turns the blade switch off', (tester) async {
+  testWidgets('emergency stop lowers the loader bucket', (tester) async {
     final bt = BluetoothService.fake()..debugSetConnected();
     addTearDown(bt.dispose);
     setLandscape(tester);
@@ -141,18 +142,17 @@ void main() {
 
     await tester.tap(find.byType(Switch));
     await tester.pumpAndSettle();
-    expect(bt.bladeOn, isTrue);
+    expect(bt.loaderUp, isTrue);
 
     await tester.tap(find.widgetWithText(EmergencyStopButton, 'STOP'));
     await tester.pumpAndSettle();
 
-    expect(bt.bladeOn, isFalse);
+    expect(bt.loaderUp, isFalse);
     expect(tester.widget<Switch>(find.byType(Switch)).value, isFalse);
-    expect(find.text('OFF'), findsOneWidget);
-    expect(bt.sentCommands, ['BLADE|ON', 'S', 'BLADE|OFF']);
+    expect(bt.sentCommands, ['LOADER|UP', 'LOADER|DOWN', 'S']);
   });
 
-  testWidgets('compact and taller landscape layouts do not overflow', (
+  testWidgets('compact landscape: no overflow and control is not full width', (
     tester,
   ) async {
     final bt = BluetoothService.fake()..debugSetConnected();
@@ -163,37 +163,46 @@ void main() {
       await tester.pumpWidget(app(bt));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull, reason: 'overflow at h=$height');
-      expect(find.byType(BladeSwitch), findsOneWidget);
+      expect(find.byType(LoaderBucketControl), findsOneWidget);
       expect(find.byType(EmergencyStopButton), findsOneWidget);
+      expect(find.text('Blade'), findsNothing);
 
-      final blade = tester.getRect(find.byType(BladeSwitch));
+      final loader = tester.getRect(find.byType(LoaderBucketControl));
       final stop = tester.getRect(find.byType(EmergencyStopButton));
-      expect(blade.bottom <= stop.top + 0.5, isTrue,
-          reason: 'blade switch must sit above e-stop at h=$height');
-      expect(blade.height, lessThan(72),
-          reason: 'blade row should stay compact at h=$height');
+      final screen = tester.getRect(find.byType(MaterialApp));
+      expect(loader.bottom <= stop.top + 0.5, isTrue,
+          reason: 'loader control must sit above e-stop at h=$height');
+      expect(loader.height, lessThan(72),
+          reason: 'loader row should stay compact at h=$height');
+      expect(loader.width, lessThan(screen.width * 0.72),
+          reason: 'loader chip must not stretch full width at h=$height');
+      expect(
+        (loader.left - screen.left - (screen.right - loader.right)).abs(),
+        lessThan(24),
+        reason: 'loader chip should be centered at h=$height',
+      );
     }
   });
 
-  testWidgets('landscape screenshots of blade off and on', (tester) async {
+  testWidgets('landscape screenshots of loader down and up', (tester) async {
     final bt = BluetoothService.fake()..debugSetConnected();
     addTearDown(bt.dispose);
     setLandscape(tester, width: 800, height: 400, dpr: 2);
 
     await tester.pumpWidget(app(bt));
     await tester.pumpAndSettle();
-    await saveLandscapeScreenshot(tester, 'controller_blade_off.png');
+    await saveLandscapeScreenshot(tester, 'loader_bucket_down.png');
     await expectLater(
       find.byType(MaterialApp),
-      matchesGoldenFile('goldens/controller_blade_off.png'),
+      matchesGoldenFile('goldens/loader_bucket_down.png'),
     );
 
     await tester.tap(find.byType(Switch));
     await tester.pumpAndSettle();
-    await saveLandscapeScreenshot(tester, 'controller_blade_on.png');
+    await saveLandscapeScreenshot(tester, 'loader_bucket_up.png');
     await expectLater(
       find.byType(MaterialApp),
-      matchesGoldenFile('goldens/controller_blade_on.png'),
+      matchesGoldenFile('goldens/loader_bucket_up.png'),
     );
   });
 }

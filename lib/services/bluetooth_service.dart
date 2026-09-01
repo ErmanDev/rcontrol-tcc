@@ -19,13 +19,13 @@ enum BtConnectionStatus {
 /// | `S`           | Emergency stop (motors + leave AUTOMATIC)    |
 /// | `E|<duty>`    | Motor PWM duty 0–65535                       |
 /// | `AUTOMATIC` / `MANUAL` | Mode switch                    |
-/// | `BLADE|ON`    | Request blade cutter on                      |
-/// | `BLADE|OFF`   | Request blade cutter off                     |
+/// | `LOADER|UP`   | Request loader bucket up                     |
+/// | `LOADER|DOWN` | Request loader bucket down (closed / safe)   |
 ///
-/// Pico firmware currently has no blade GPIO; unknown lines are ignored
-/// by `main_bluetooth.py`. The app still sends `BLADE|ON` / `BLADE|OFF`
+/// Pico firmware currently has no loader GPIO; unknown lines are ignored
+/// by `main_bluetooth.py`. The app still sends `LOADER|UP` / `LOADER|DOWN`
 /// so a future firmware hook-up does not require another UI change.
-/// Emergency stop always follows `S` with `BLADE|OFF`.
+/// Emergency stop sends `LOADER|DOWN` (safe) then `S`.
 class BluetoothService extends ChangeNotifier {
   BluetoothService() : _offline = false;
 
@@ -48,7 +48,7 @@ class BluetoothService extends ChangeNotifier {
   String? _lastError;
 
   bool _automaticMode = false;
-  bool _bladeOn = false;
+  bool _loaderUp = false;
   int _speedDuty = 25000;
   final List<String> _sentCommands = [];
 
@@ -58,7 +58,7 @@ class BluetoothService extends ChangeNotifier {
   String? get lastError => _lastError;
   bool get isConnected => _status == BtConnectionStatus.connected;
   bool get automaticMode => _automaticMode;
-  bool get bladeOn => _bladeOn;
+  bool get loaderUp => _loaderUp;
   int get speedDuty => _speedDuty;
 
   /// Outgoing command lines without the trailing newline. Fake mode only
@@ -124,7 +124,7 @@ class BluetoothService extends ChangeNotifier {
     _connection = null;
     _status = BtConnectionStatus.disconnected;
     _device = null;
-    _bladeOn = false;
+    _loaderUp = false;
     notifyListeners();
 
     if (conn != null) {
@@ -178,15 +178,15 @@ class BluetoothService extends ChangeNotifier {
     await send(command);
   }
 
-  /// Sends `BLADE|ON` or `BLADE|OFF`. Reverts [bladeOn] if the write fails.
-  Future<void> setBlade(bool on) async {
-    final previous = _bladeOn;
-    _bladeOn = on;
+  /// Sends `LOADER|UP` or `LOADER|DOWN`. Reverts [loaderUp] if the write fails.
+  Future<void> setLoaderUp(bool up) async {
+    final previous = _loaderUp;
+    _loaderUp = up;
     notifyListeners();
     try {
-      await send(on ? 'BLADE|ON' : 'BLADE|OFF');
+      await send(up ? 'LOADER|UP' : 'LOADER|DOWN');
     } catch (_) {
-      _bladeOn = previous;
+      _loaderUp = previous;
       notifyListeners();
       rethrow;
     }
@@ -194,16 +194,16 @@ class BluetoothService extends ChangeNotifier {
 
   Future<void> emergencyStop() async {
     _automaticMode = false;
-    _bladeOn = false;
+    _loaderUp = false;
     notifyListeners();
     Object? firstError;
     try {
-      await send('S');
+      await send('LOADER|DOWN');
     } catch (e) {
       firstError = e;
     }
     try {
-      await send('BLADE|OFF');
+      await send('S');
     } catch (e) {
       firstError ??= e;
     }
@@ -218,7 +218,7 @@ class BluetoothService extends ChangeNotifier {
         : BtConnectionStatus.disconnected;
     if (!connected) {
       _device = null;
-      _bladeOn = false;
+      _loaderUp = false;
     }
     notifyListeners();
   }
@@ -228,7 +228,7 @@ class BluetoothService extends ChangeNotifier {
     _inputSub = null;
     _status = BtConnectionStatus.disconnected;
     _device = null;
-    _bladeOn = false;
+    _loaderUp = false;
     notifyListeners();
   }
 
