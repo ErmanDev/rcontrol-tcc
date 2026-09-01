@@ -100,27 +100,28 @@ class LoaderFirmwareTest(unittest.TestCase):
         self.assertGreater(len(expected), 1)
         for angle, d1, d2 in zip(expected, pwm1_history, pwm2_history):
             self.assertEqual(d1, FW._positional_servo_duty_u16(angle))
-            # Invert on GP17: UP 110 -> pin17 duty for 70; DOWN 0 -> pin17 180.
+            # Invert on GP17: UP 170 -> pin17 duty for 10; DOWN 90 -> pin17 90.
             self.assertEqual(d2, FW._positional_servo_duty_u16(180 - angle))
 
     def test_boot_is_down_and_servos_are_mirrored(self):
         self.assertTrue(FW.LOADER_SERVO_2_INVERT)
-        self.assertEqual(FW.LOADER_DOWN_ANGLE, 0)
-        self.assertEqual(FW.LOADER_UP_ANGLE, 110)
+        self.assertEqual(FW.LOADER_DOWN_ANGLE, 90)
+        self.assertEqual(FW.LOADER_UP_ANGLE, 170)
         self.assertEqual(FW.LOADER_STEP_DEG, 2)
         self.assertEqual(FW.LOADER_STEP_DELAY_MS, 20)
-        self.assertEqual(abs(FW.LOADER_UP_ANGLE - FW.LOADER_DOWN_ANGLE), 110)
+        self.assertEqual(abs(FW.LOADER_UP_ANGLE - FW.LOADER_DOWN_ANGLE), 80)
 
         bucket = FW.LoaderBucket()
         self.assertFalse(bucket._up)
-        self.assertEqual(bucket._angle, 0)
+        self.assertEqual(bucket._angle, 90)
         self.assertEqual(bucket._pwm1._freq, 50)
         self.assertEqual(bucket._pwm2._freq, 50)
-        # Rest pose: GP16=0, GP17=180 (invert). Not 90/90.
-        down1 = FW._positional_servo_duty_u16(0)
-        down2 = FW._positional_servo_duty_u16(180)
+        # Rest pose: GP16=90, GP17=90 (invert). Not 0/180 (that raised the plate).
+        down1 = FW._positional_servo_duty_u16(90)
+        down2 = FW._positional_servo_duty_u16(90)
         self.assertEqual(bucket._pwm1.duty, down1)
         self.assertEqual(bucket._pwm2.duty, down2)
+        self.assertEqual(down1, down2)
 
         bucket._pwm1.duty_history.clear()
         bucket._pwm2.duty_history.clear()
@@ -139,8 +140,8 @@ class LoaderFirmwareTest(unittest.TestCase):
         self.assertTrue(bucket._up)
         up1 = FW._positional_servo_duty_u16(FW.LOADER_UP_ANGLE)
         up2 = FW._positional_servo_duty_u16(180 - FW.LOADER_UP_ANGLE)
-        self.assertEqual(up1, FW._positional_servo_duty_u16(110))
-        self.assertEqual(up2, FW._positional_servo_duty_u16(70))
+        self.assertEqual(up1, FW._positional_servo_duty_u16(170))
+        self.assertEqual(up2, FW._positional_servo_duty_u16(10))
         self.assertEqual(bucket._pwm1.duty, up1)
         self.assertEqual(bucket._pwm2.duty, up2)
         self.assertNotEqual(up1, up2)
@@ -190,8 +191,8 @@ class LoaderFirmwareTest(unittest.TestCase):
         spec.loader.exec_module(shim)
         self.assertEqual(shim.LOADER_SERVO_1_PIN, FW.LOADER_SERVO_1_PIN)
         self.assertEqual(shim.LOADER_SERVO_2_PIN, FW.LOADER_SERVO_2_PIN)
-        self.assertEqual(shim.LOADER_DOWN_ANGLE, 0)
-        self.assertEqual(shim.LOADER_UP_ANGLE, 110)
+        self.assertEqual(shim.LOADER_DOWN_ANGLE, 90)
+        self.assertEqual(shim.LOADER_UP_ANGLE, 170)
         self.assertTrue(shim.LOADER_SERVO_2_INVERT)
         self.assertEqual(shim.LOADER_STEP_DEG, 2)
         self.assertEqual(shim.LOADER_STEP_DELAY_MS, 20)
@@ -253,17 +254,16 @@ class LoaderFirmwareTest(unittest.TestCase):
 
     def test_live_pin16_and_pin17_are_raw_and_independent(self):
         mower, loader = self._mower()
-        down1 = FW._positional_servo_duty_u16(0)
-        down2 = FW._positional_servo_duty_u16(180)
-        self.assertEqual(loader._pwm1.duty, down1)
-        self.assertEqual(loader._pwm2.duty, down2)
+        rest = FW._positional_servo_duty_u16(90)
+        self.assertEqual(loader._pwm1.duty, rest)
+        self.assertEqual(loader._pwm2.duty, rest)
 
         loader._pwm1.duty_history.clear()
         loader._pwm2.duty_history.clear()
         mower.handle_line("LOADER|16|45")
         self.assertEqual(loader._angle, 45)
         self.assertEqual(loader._pwm1.duty, FW._positional_servo_duty_u16(45))
-        self.assertEqual(loader._pwm2.duty, down2)
+        self.assertEqual(loader._pwm2.duty, rest)
         self.assertEqual(len(loader._pwm1.duty_history), 1)
         self.assertEqual(len(loader._pwm2.duty_history), 0)
 
