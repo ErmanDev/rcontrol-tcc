@@ -99,29 +99,28 @@ class LoaderFirmwareTest(unittest.TestCase):
         self.assertEqual(len(pwm2_history), len(expected))
         self.assertGreater(len(expected), 1)
         for angle, d1, d2 in zip(expected, pwm1_history, pwm2_history):
-            self.assertNotIn(angle, (0, 180))
             self.assertEqual(d1, FW._positional_servo_duty_u16(angle))
-            # Invert on GP17: UP 150 -> pin17 duty for 30; DOWN 90 -> both 90.
+            # Invert on GP17: UP 60 -> pin17 duty for 120; DOWN 0 -> pin17 180.
             self.assertEqual(d2, FW._positional_servo_duty_u16(180 - angle))
 
     def test_boot_is_down_and_servos_are_mirrored(self):
         self.assertTrue(FW.LOADER_SERVO_2_INVERT)
-        self.assertEqual(FW.LOADER_DOWN_ANGLE, 90)
-        self.assertEqual(FW.LOADER_UP_ANGLE, 150)
+        self.assertEqual(FW.LOADER_DOWN_ANGLE, 0)
+        self.assertEqual(FW.LOADER_UP_ANGLE, 60)
         self.assertEqual(FW.LOADER_STEP_DEG, 2)
         self.assertEqual(FW.LOADER_STEP_DELAY_MS, 20)
-        self.assertNotIn(FW.LOADER_DOWN_ANGLE, (0, 180))
-        self.assertNotIn(FW.LOADER_UP_ANGLE, (0, 180))
-        self.assertLess(abs(FW.LOADER_UP_ANGLE - FW.LOADER_DOWN_ANGLE), 90)
+        self.assertEqual(abs(FW.LOADER_UP_ANGLE - FW.LOADER_DOWN_ANGLE), 60)
 
         bucket = FW.LoaderBucket()
         self.assertFalse(bucket._up)
+        self.assertEqual(bucket._angle, 0)
         self.assertEqual(bucket._pwm1._freq, 50)
         self.assertEqual(bucket._pwm2._freq, 50)
-        # Rest pose is ~90° on both horns (180-90 == 90) — the photo, not UP.
-        down_duty = FW._positional_servo_duty_u16(FW.LOADER_DOWN_ANGLE)
-        self.assertEqual(bucket._pwm1.duty, down_duty)
-        self.assertEqual(bucket._pwm2.duty, down_duty)
+        # Rest pose: GP16=0, GP17=180 (invert). Not 90/90.
+        down1 = FW._positional_servo_duty_u16(0)
+        down2 = FW._positional_servo_duty_u16(180)
+        self.assertEqual(bucket._pwm1.duty, down1)
+        self.assertEqual(bucket._pwm2.duty, down2)
 
         bucket._pwm1.duty_history.clear()
         bucket._pwm2.duty_history.clear()
@@ -140,8 +139,8 @@ class LoaderFirmwareTest(unittest.TestCase):
         self.assertTrue(bucket._up)
         up1 = FW._positional_servo_duty_u16(FW.LOADER_UP_ANGLE)
         up2 = FW._positional_servo_duty_u16(180 - FW.LOADER_UP_ANGLE)
-        self.assertEqual(up1, FW._positional_servo_duty_u16(150))
-        self.assertEqual(up2, FW._positional_servo_duty_u16(30))
+        self.assertEqual(up1, FW._positional_servo_duty_u16(60))
+        self.assertEqual(up2, FW._positional_servo_duty_u16(120))
         self.assertEqual(bucket._pwm1.duty, up1)
         self.assertEqual(bucket._pwm2.duty, up2)
         self.assertNotEqual(up1, up2)
@@ -158,8 +157,8 @@ class LoaderFirmwareTest(unittest.TestCase):
         bucket._pwm2.duty_history.clear()
         bucket.down()
         self.assertFalse(bucket._up)
-        self.assertEqual(bucket._pwm1.duty, down_duty)
-        self.assertEqual(bucket._pwm2.duty, down_duty)
+        self.assertEqual(bucket._pwm1.duty, down1)
+        self.assertEqual(bucket._pwm2.duty, down2)
         self._assert_sweep_invert(
             bucket._pwm1.duty_history,
             bucket._pwm2.duty_history,
@@ -191,27 +190,121 @@ class LoaderFirmwareTest(unittest.TestCase):
         spec.loader.exec_module(shim)
         self.assertEqual(shim.LOADER_SERVO_1_PIN, FW.LOADER_SERVO_1_PIN)
         self.assertEqual(shim.LOADER_SERVO_2_PIN, FW.LOADER_SERVO_2_PIN)
-        self.assertEqual(shim.LOADER_DOWN_ANGLE, 90)
-        self.assertEqual(shim.LOADER_UP_ANGLE, 150)
+        self.assertEqual(shim.LOADER_DOWN_ANGLE, 0)
+        self.assertEqual(shim.LOADER_UP_ANGLE, 60)
         self.assertTrue(shim.LOADER_SERVO_2_INVERT)
         self.assertEqual(shim.LOADER_STEP_DEG, 2)
         self.assertEqual(shim.LOADER_STEP_DELAY_MS, 20)
         self.assertIs(shim.LoaderBucket, FW.LoaderBucket)
+        self.assertIs(shim.LoaderBucket.set_linked_angle, FW.LoaderBucket.set_linked_angle)
 
-    def test_loader_never_commands_0_or_180(self):
+    def test_loader_allows_0_and_180_and_clamps_out_of_range(self):
         bucket = FW.LoaderBucket()
         bucket._set_angle(0)
-        self.assertEqual(bucket._angle, 1)
-        self.assertEqual(bucket._pwm1.duty, FW._positional_servo_duty_u16(1))
-        self.assertEqual(bucket._pwm2.duty, FW._positional_servo_duty_u16(179))
+        self.assertEqual(bucket._angle, 0)
+        self.assertEqual(bucket._pwm1.duty, FW._positional_servo_duty_u16(0))
+        self.assertEqual(bucket._pwm2.duty, FW._positional_servo_duty_u16(180))
         bucket._set_angle(180)
-        self.assertEqual(bucket._angle, 179)
-        self.assertEqual(bucket._pwm1.duty, FW._positional_servo_duty_u16(179))
-        self.assertEqual(bucket._pwm2.duty, FW._positional_servo_duty_u16(1))
+        self.assertEqual(bucket._angle, 180)
+        self.assertEqual(bucket._pwm1.duty, FW._positional_servo_duty_u16(180))
+        self.assertEqual(bucket._pwm2.duty, FW._positional_servo_duty_u16(0))
         bucket._set_angle(-40)
-        self.assertEqual(bucket._angle, 1)
+        self.assertEqual(bucket._angle, 0)
+        self.assertEqual(bucket._pwm1.duty, FW._positional_servo_duty_u16(0))
+        self.assertEqual(bucket._pwm2.duty, FW._positional_servo_duty_u16(180))
         bucket._set_angle(200)
-        self.assertEqual(bucket._angle, 179)
+        self.assertEqual(bucket._angle, 180)
+        self.assertEqual(bucket._pwm1.duty, FW._positional_servo_duty_u16(180))
+        self.assertEqual(bucket._pwm2.duty, FW._positional_servo_duty_u16(0))
+
+    def _mower(self):
+        motors = FW.Motors()
+        ultra = FW.Ultrasonic()
+        scanner = FW.ServoScanner(FW.SERVO_PIN)
+        loader = FW.LoaderBucket()
+        mower = FW.Mower(motors, ultra, scanner, loader)
+        return mower, loader
+
+    def test_live_angle_is_immediate_and_inverted(self):
+        mower, loader = self._mower()
+        loader._pwm1.duty_history.clear()
+        loader._pwm2.duty_history.clear()
+        delays = []
+        original_sleep = FW.time.sleep_ms
+        FW.time.sleep_ms = lambda ms: delays.append(ms)
+        try:
+            mower.handle_line("LOADER|ANGLE|60")
+        finally:
+            FW.time.sleep_ms = original_sleep
+
+        self.assertEqual(delays, [])
+        self.assertEqual(len(loader._pwm1.duty_history), 1)
+        self.assertEqual(len(loader._pwm2.duty_history), 1)
+        self.assertEqual(loader._angle, 60)
+        self.assertEqual(loader._pwm1.duty, FW._positional_servo_duty_u16(60))
+        self.assertEqual(loader._pwm2.duty, FW._positional_servo_duty_u16(120))
+
+        loader._pwm1.duty_history.clear()
+        loader._pwm2.duty_history.clear()
+        mower.handle_line("LOADER|ANGLE|0")
+        self.assertEqual(len(loader._pwm1.duty_history), 1)
+        self.assertEqual(loader._pwm1.duty, FW._positional_servo_duty_u16(0))
+        self.assertEqual(loader._pwm2.duty, FW._positional_servo_duty_u16(180))
+
+    def test_live_pin16_and_pin17_are_raw_and_independent(self):
+        mower, loader = self._mower()
+        down1 = FW._positional_servo_duty_u16(0)
+        down2 = FW._positional_servo_duty_u16(180)
+        self.assertEqual(loader._pwm1.duty, down1)
+        self.assertEqual(loader._pwm2.duty, down2)
+
+        loader._pwm1.duty_history.clear()
+        loader._pwm2.duty_history.clear()
+        mower.handle_line("LOADER|16|45")
+        self.assertEqual(loader._angle, 45)
+        self.assertEqual(loader._pwm1.duty, FW._positional_servo_duty_u16(45))
+        self.assertEqual(loader._pwm2.duty, down2)
+        self.assertEqual(len(loader._pwm1.duty_history), 1)
+        self.assertEqual(len(loader._pwm2.duty_history), 0)
+
+        loader._pwm1.duty_history.clear()
+        loader._pwm2.duty_history.clear()
+        mower.handle_line("LOADER|17|90")
+        self.assertEqual(loader._angle, 45)
+        self.assertEqual(loader._pwm1.duty, FW._positional_servo_duty_u16(45))
+        self.assertEqual(loader._pwm2.duty, FW._positional_servo_duty_u16(90))
+        self.assertEqual(len(loader._pwm1.duty_history), 0)
+        self.assertEqual(len(loader._pwm2.duty_history), 1)
+
+    def test_independent_left_updates_later_up_down_sweep_start(self):
+        mower, loader = self._mower()
+        mower.handle_line("LOADER|16|20")
+        self.assertEqual(loader._angle, 20)
+
+        loader._pwm1.duty_history.clear()
+        loader._pwm2.duty_history.clear()
+        mower.handle_line("LOADER|UP")
+        self._assert_sweep_invert(
+            loader._pwm1.duty_history,
+            loader._pwm2.duty_history,
+            20,
+            FW.LOADER_UP_ANGLE,
+        )
+        self.assertTrue(loader._up)
+
+    def test_live_angles_clamp_0_180(self):
+        mower, loader = self._mower()
+        mower.handle_line("LOADER|ANGLE|-10")
+        self.assertEqual(loader._angle, 0)
+        self.assertEqual(loader._pwm1.duty, FW._positional_servo_duty_u16(0))
+        self.assertEqual(loader._pwm2.duty, FW._positional_servo_duty_u16(180))
+        mower.handle_line("LOADER|16|200")
+        self.assertEqual(loader._angle, 180)
+        self.assertEqual(loader._pwm1.duty, FW._positional_servo_duty_u16(180))
+        mower.handle_line("LOADER|17|-5")
+        self.assertEqual(loader._pwm2.duty, FW._positional_servo_duty_u16(0))
+        mower.handle_line("LOADER|ANGLE|abc")
+        self.assertEqual(loader._angle, 180)
 
 
 if __name__ == "__main__":

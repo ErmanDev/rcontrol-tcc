@@ -86,6 +86,11 @@ void main() {
     expect(find.text('Up'), findsOneWidget);
     expect(find.text('Blade'), findsNothing);
     expect(find.byType(Slider), findsOneWidget); // speed only, not a rotary
+    expect(find.byKey(const Key('loaderTestButton')), findsOneWidget);
+    expect(
+      tester.widget<FilledButton>(find.byKey(const Key('loaderTestButton'))).onPressed,
+      isNull,
+    );
 
     final sw = tester.widget<Switch>(find.byType(Switch));
     expect(sw.onChanged, isNull);
@@ -168,6 +173,8 @@ void main() {
       expect(find.text('Blade'), findsNothing);
 
       final loader = tester.getRect(find.byType(LoaderBucketControl));
+      final bar = tester.getRect(find.byKey(const Key('loaderBucketBar')));
+      final testBtn = tester.getRect(find.byKey(const Key('loaderTestButton')));
       final stop = tester.getRect(find.byType(EmergencyStopButton));
       final screen = tester.getRect(find.byType(MaterialApp));
       expect(loader.bottom <= stop.top + 0.5, isTrue,
@@ -176,10 +183,14 @@ void main() {
           reason: 'loader row should stay compact at h=$height');
       expect(loader.width, lessThan(screen.width * 0.72),
           reason: 'loader chip must not stretch full width at h=$height');
+      expect(testBtn.width, lessThan(120),
+          reason: 'Test button must stay compact, not full width, at h=$height');
+      expect(bar.width, lessThan(screen.width * 0.85),
+          reason: 'loader+Test row must not stretch full width at h=$height');
       expect(
-        (loader.left - screen.left - (screen.right - loader.right)).abs(),
+        (bar.left - screen.left - (screen.right - bar.right)).abs(),
         lessThan(24),
-        reason: 'loader chip should be centered at h=$height',
+        reason: 'loader+Test row should be centered at h=$height',
       );
     }
   });
@@ -204,5 +215,32 @@ void main() {
       find.byType(MaterialApp),
       matchesGoldenFile('goldens/loader_bucket_up.png'),
     );
+  });
+
+  testWidgets('Test button pushes servo calibration and back returns', (
+    tester,
+  ) async {
+    final bt = BluetoothService.fake()..debugSetConnected();
+    addTearDown(bt.dispose);
+    setLandscape(tester, height: 400);
+
+    await tester.pumpWidget(app(bt));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(LoaderBucketControl), findsOneWidget);
+    await tester.tap(find.byKey(const Key('loaderTestButton')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Servo calibration'), findsOneWidget);
+    expect(find.textContaining('Loader angle:'), findsOneWidget);
+    expect(find.byKey(const Key('loaderAngleSlider')), findsOneWidget);
+    expect(find.byKey(const Key('loaderGp16Slider')), findsOneWidget);
+    expect(find.byKey(const Key('loaderGp17Slider')), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Back'));
+    await tester.pumpAndSettle();
+    expect(find.text('Servo calibration'), findsNothing);
+    expect(find.byType(LoaderBucketControl), findsOneWidget);
+    expect(find.byType(Switch), findsOneWidget);
   });
 }
