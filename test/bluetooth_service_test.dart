@@ -8,6 +8,14 @@ void main() {
     return bt;
   }
 
+  test('loader switch defaults off (DOWN / rest 90)', () {
+    final bt = BluetoothService.fake();
+    addTearDown(bt.dispose);
+
+    expect(bt.loaderUp, isFalse);
+    expect(bt.sentCommands, isEmpty);
+  });
+
   test('successful connect sends LOADER|DOWN once and stays Down', () async {
     final bt = BluetoothService.fake();
     addTearDown(bt.dispose);

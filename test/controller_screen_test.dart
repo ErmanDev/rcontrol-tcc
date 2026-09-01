@@ -104,6 +104,25 @@ void main() {
     expect(sw.value, isFalse);
   });
 
+  testWidgets('connect sends LOADER|DOWN once and switch stays off', (
+    tester,
+  ) async {
+    final bt = BluetoothService.fake();
+    addTearDown(bt.dispose);
+    setLandscape(tester, height: 360);
+
+    await tester.pumpWidget(app(bt));
+    await tester.pumpAndSettle();
+    expect(tester.widget<Switch>(find.byType(Switch)).value, isFalse);
+
+    await bt.debugCompleteSuccessfulConnect();
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<Switch>(find.byType(Switch)).value, isFalse);
+    expect(bt.loaderUp, isFalse);
+    expect(bt.sentCommands, ['LOADER|DOWN']);
+  });
+
   testWidgets('loader bucket is enabled in manual and automatic when connected', (
     tester,
   ) async {
