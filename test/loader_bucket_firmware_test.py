@@ -54,9 +54,10 @@ def _load_firmware():
     machine.UART = UART
     sys.modules["machine"] = machine
 
-    path = Path(__file__).resolve().parents[1] / "pico_w" / "main_bluetooth.py"
-    spec = importlib.util.spec_from_file_location("main_bluetooth", path)
+    path = Path(__file__).resolve().parents[1] / "pico_w" / "main.py"
+    spec = importlib.util.spec_from_file_location("main", path)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules["main"] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -127,6 +128,18 @@ class LoaderFirmwareTest(unittest.TestCase):
         mower.handle_line("S")
         self.assertFalse(loader._up)
         self.assertEqual(mower.mode, "MANUAL")
+
+    def test_main_bluetooth_shim_stays_in_lockstep(self):
+        shim_path = Path(__file__).resolve().parents[1] / "pico_w" / "main_bluetooth.py"
+        spec = importlib.util.spec_from_file_location("main_bluetooth", shim_path)
+        shim = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(shim)
+        self.assertEqual(shim.LOADER_SERVO_1_PIN, FW.LOADER_SERVO_1_PIN)
+        self.assertEqual(shim.LOADER_SERVO_2_PIN, FW.LOADER_SERVO_2_PIN)
+        self.assertEqual(shim.LOADER_DOWN_ANGLE, 90)
+        self.assertEqual(shim.LOADER_UP_ANGLE, 150)
+        self.assertTrue(shim.LOADER_SERVO_2_INVERT)
+        self.assertIs(shim.LoaderBucket, FW.LoaderBucket)
 
 
 if __name__ == "__main__":
