@@ -7,8 +7,10 @@ Loader bucket: two positional SG90s on the same hinge (not 360°).
   LEFT  = GP16 (user marked 16)  — logical angle
   RIGHT = GP17 (user marked 17)  — mirrored 180-angle so the pair does not fight
   orange = signal, red = 5V shared, brown = GND to physical pin 23.
-  Down 0, Up 110 so physical lift can reach ~90°. PWM eases 2° / 20ms for UP/DOWN.
-  At UP: GP16=110, GP17=70 (180-110).
+  Default rest 90 so the bucket is NOT up at boot; invert still on.
+  Down 90, Up 170 (~80° lift from rest, off the end-stop). PWM eases 2° / 20ms for UP/DOWN.
+  At rest both servos are 90 (180-90=90) so the bucket stays flat.
+  At UP: GP16=170, GP17=10 (180-170).
   Live cal (no sweep): LOADER|ANGLE|<n>, LOADER|16|<n>, LOADER|17|<n>.
 """
 
@@ -41,16 +43,17 @@ SERVO_MAX_DUTY_U16 = 7803
 # Positional hobby servos at 50 Hz — not continuous-rotation 360° units.
 LOADER_SERVO_1_PIN = 16  # left, user marked 16
 LOADER_SERVO_2_PIN = 17  # right, user marked 17
-# Rest / default / photo-level bucket. LOADER|DOWN and boot go here.
-# Down 0, Up 110 so physical lift can reach ~90° (110 covers mechanical slack).
-LOADER_DOWN_ANGLE = 0    # rest / default / photo-level bucket
-# User: 60° from rest does not reach 90°. Use 110 to make it higher.
-# Not 180. Not 360.
-LOADER_UP_ANGLE = 110  # user: does not reach 90, use 110 to make it higher. Not 180. Not 360.
+# Default rest 90 so the bucket is NOT up at boot; invert still on.
+# At rest both servos are 90 (180-90=90) so the bucket stays flat.
+# Boot, LOADER|DOWN, STOP, and BT connect all go here.
+LOADER_DOWN_ANGLE = 90  # rest / default / photo-level bucket
+# Prefer 170 so we stay off the end-stop: ~90–110° of lift from rest. 90+80=170.
+# Not 180. Not 360. Not back to rest=0.
+LOADER_UP_ANGLE = 170  # GP16=170, GP17=10 at UP. Invert still on.
 # RIGHT servo (GP17) is on the opposite side of the same hinge, so it is mirrored.
 # Invert on GP17 is what stops them fighting: that pin gets 180-angle each step.
 # If the bucket twists instead of pivoting, set this False (or swap the plugs).
-# At DOWN: GP16=0, GP17=180. At UP: GP16=110, GP17=70 (180-110).
+# At DOWN: GP16=90, GP17=90. At UP: GP16=170, GP17=10 (180-170).
 LOADER_SERVO_2_INVERT = True  # right servo is mirrored; GP17 gets 180-angle so the pair does not fight
 # Ease both horns together. Do not jump PWM in one shot (slams / fights).
 LOADER_STEP_DEG = 2
@@ -249,7 +252,8 @@ class LoaderBucket:
         self._pwm1.freq(50)
         self._pwm2.freq(50)
         self._up = False
-        # Boot rest pose: already at DOWN 0, so down() does not sweep.
+        # Boot rest pose: already at DOWN 90 so the bucket is NOT up at boot.
+        # down() writes 90/90 (invert still on: 180-90=90). Does not sweep.
         self._angle = LOADER_DOWN_ANGLE
         self.down()
         time.sleep_ms(SERVO_SETTLE_MS)

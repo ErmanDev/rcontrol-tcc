@@ -26,10 +26,12 @@ enum BtConnectionStatus {
 /// | `LOADER|17|<n>` | Live raw right GP17 0–180 (no invert)    |
 ///
 /// Pico firmware drives two positional hobby servos together:
-/// GP16 (physical 21) and GP17 (physical 22). Rest/DOWN is 0°, UP is 60°.
+/// GP16 (physical 21) and GP17 (physical 22). Rest/DOWN is 90°, UP is 170°.
+/// Default rest 90 so the bucket is NOT up at boot; invert still on.
 /// `LOADER|UP` / `LOADER|DOWN` are handled in both MANUAL and AUTOMATIC.
 /// Live cal lines apply immediately (no sweep). Emergency stop sends
 /// `LOADER|DOWN` (safe) then `S`; firmware also lowers the bucket on `S`.
+/// On successful Bluetooth connect the phone sends `LOADER|DOWN` once (never UP).
 ///
 /// Linked invert: logical [leftAngle] on GP16, GP17 gets `180 - left`.
 int loaderInvertedRightAngle(int leftAngle) {
@@ -117,7 +119,13 @@ class BluetoothService extends ChangeNotifier {
       );
 
       _status = BtConnectionStatus.connected;
+      _loaderUp = false;
       notifyListeners();
+      try {
+        await _forceLoaderRestOnConnect();
+      } catch (_) {
+        // Link is up; rest pose is best-effort so connect still succeeds.
+      }
       return true;
     } catch (e) {
       _status = BtConnectionStatus.failed;
@@ -187,6 +195,23 @@ class BluetoothService extends ChangeNotifier {
       throw StateError('Manual command blocked while AUTOMATIC mode is active.');
     }
     await send(command);
+  }
+
+  /// Phone-side rest after a successful Bluetooth link. Sends `LOADER|DOWN`
+  /// once (never UP). [loaderUp] stays false so the switch remains Down.
+  Future<void> _forceLoaderRestOnConnect() async {
+    _loaderUp = false;
+    await send('LOADER|DOWN');
+  }
+
+  /// Fake-mode stand-in for a successful [connect]: marks connected and
+  /// sends `LOADER|DOWN` once so the phone forces rest (never UP).
+  @visibleForTesting
+  Future<void> debugCompleteSuccessfulConnect() async {
+    _status = BtConnectionStatus.connected;
+    _lastError = null;
+    notifyListeners();
+    await _forceLoaderRestOnConnect();
   }
 
   /// Sends `LOADER|UP` or `LOADER|DOWN`. Reverts [loaderUp] if the write fails.

@@ -8,6 +8,17 @@ void main() {
     return bt;
   }
 
+  test('successful connect sends LOADER|DOWN once and stays Down', () async {
+    final bt = BluetoothService.fake();
+    addTearDown(bt.dispose);
+
+    await bt.debugCompleteSuccessfulConnect();
+    expect(bt.isConnected, isTrue);
+    expect(bt.loaderUp, isFalse);
+    expect(bt.sentCommands, ['LOADER|DOWN']);
+    expect(bt.sentCommands, isNot(contains('LOADER|UP')));
+  });
+
   test('setLoaderUp sends LOADER|UP and LOADER|DOWN', () async {
     final bt = fakeConnected();
     addTearDown(bt.dispose);
@@ -58,6 +69,7 @@ void main() {
     expect(loaderInvertedRightAngle(0), 180);
     expect(loaderInvertedRightAngle(60), 120);
     expect(loaderInvertedRightAngle(90), 90);
+    expect(loaderInvertedRightAngle(170), 10);
     expect(loaderInvertedRightAngle(-10), 180);
     expect(loaderInvertedRightAngle(200), 0);
   });
