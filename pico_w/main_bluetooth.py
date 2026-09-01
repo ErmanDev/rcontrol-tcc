@@ -16,6 +16,24 @@ SERVO_PIN = 15
 SERVO_MIN_DUTY_U16 = 1950
 SERVO_MAX_DUTY_U16 = 7803
 
+# GPIO map (do not reuse left-header pins for the loader):
+#   GP0/GP1   UART TX/RX
+#   GP2       ultrasonic echo
+#   GP3       ultrasonic trigger
+#   GP6/GP7   motor PWM enables
+#   GP10–GP13 motors
+#   GP15      ultrasonic scanner servo
+# Loader bucket uses the RIGHT header only (physical 21–40):
+#   GP16 (physical 21)  loader servo 1
+#   GP17 (physical 22)  loader servo 2
+# Positional hobby servos at 50 Hz — not continuous-rotation 360° units.
+LOADER_SERVO_1_PIN = 16  # GP16, physical 21
+LOADER_SERVO_2_PIN = 17  # GP17, physical 22
+LOADER_DOWN_ANGLE = 20
+LOADER_UP_ANGLE = 160
+# True if servo 2's horn is mounted mirrored (sends 180 - angle).
+LOADER_SERVO_2_INVERT = False
+
 PWM_FREQ_HZ = 1000
 INITIAL_SPEED = 25000
 # Separate automatic speeds: slower travel, stronger turns for full 90°.
@@ -184,6 +202,53 @@ class ServoScanner:
         self.move_smooth(self.CENTER_ANGLE)
         time.sleep_ms(SERVO_SETTLE_MS)
         return left, right
+
+
+def _positional_servo_duty_u16(angle):
+    """50 Hz positional hobby-servo duty. Angle is clamped to 0–180."""
+    angle = max(0, min(180, int(angle)))
+    return int(
+        angle * (SERVO_MAX_DUTY_U16 - SERVO_MIN_DUTY_U16) / 180
+        + SERVO_MIN_DUTY_U16
+    )
+
+
+class LoaderBucket:
+    """Two positional hobby servos driven together (UP / DOWN, not 360°)."""
+
+    def __init__(self, pin1=LOADER_SERVO_1_PIN, pin2=LOADER_SERVO_2_PIN):
+        self._pwm1 = PWM(Pin(pin1))
+        self._pwm2 = PWM(Pin(pin2))
+        self._pwm1.freq(50)
+        self._pwm2.freq(50)
+        self._up = False
+        self.down()
+        time.sleep_ms(SERVO_SETTLE_MS)
+
+    def _set_angle(self, angle):
+        angle = max(0, min(180, int(angle)))
+        angle2 = (180 - angle) if LOADER_SERVO_2_INVERT else angle
+        angle2 = max(0, min(180, int(angle2)))
+        self._pwm1.duty_u16(_positional_servo_duty_u16(angle))
+        self._pwm2.duty_u16(_positional_servo_duty_u16(angle2))
+
+    def up(self):
+        self._set_angle(LOADER_UP_ANGLE)
+        self._up = True
+        print(
+            "Loader -> UP GP{}+GP{} angle={}".format(
+                LOADER_SERVO_1_PIN, LOADER_SERVO_2_PIN, LOADER_UP_ANGLE
+            )
+        )
+
+    def down(self):
+        self._set_angle(LOADER_DOWN_ANGLE)
+        self._up = False
+        print(
+            "Loader -> DOWN GP{}+GP{} angle={}".format(
+                LOADER_SERVO_1_PIN, LOADER_SERVO_2_PIN, LOADER_DOWN_ANGLE
+            )
+        )
 
 
 class ManualController:
@@ -436,15 +501,18 @@ class Mower:
         "STOP": "STOP",
     }
 
-    def __init__(self, motors, ultrasonic, scanner):
+    def __init__(self, motors, ultrasonic, scanner, loader):
         self.motors = motors
         self.ultrasonic = ultrasonic
+        self.loader = loader
         self.manual = ManualController(motors)
         self.auto = AutomaticController(motors, ultrasonic, scanner)
         self.mode = "MANUAL"
         self.manual_speed = INITIAL_SPEED
 
     def emergency_stop(self):
+        # Safe hopper first, then existing drive STOP / leave AUTOMATIC.
+        self.loader.down()
         self.mode = "MANUAL"
         self.auto.stop()
         self.motors.set_speed(self.manual_speed)
@@ -496,6 +564,16 @@ class Mower:
                 return
             self.motors.set_speed(self.manual_speed)
             print("Manual speed ->", self.manual_speed)
+            return
+        if cmd.startswith("LOADER|"):
+            # Hopper is independent of drive; allowed in MANUAL and AUTOMATIC.
+            action = cmd.split("|", 1)[1]
+            if action == "UP":
+                self.loader.up()
+            elif action == "DOWN":
+                self.loader.down()
+            else:
+                print("Invalid loader command:", cmd)
             return
 
         mapped = self.MOVE_MAP.get(cmd)
@@ -569,7 +647,8 @@ def main():
     motors = Motors()
     ultrasonic = Ultrasonic()
     scanner = ServoScanner(SERVO_PIN)
-    mower = Mower(motors, ultrasonic, scanner)
+    loader = LoaderBucket()
+    mower = Mower(motors, ultrasonic, scanner, loader)
     uart, uart_buf = init_uart()
 
     while True:

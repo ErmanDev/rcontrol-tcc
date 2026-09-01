@@ -22,10 +22,10 @@ enum BtConnectionStatus {
 /// | `LOADER|UP`   | Request loader bucket up                     |
 /// | `LOADER|DOWN` | Request loader bucket down (closed / safe)   |
 ///
-/// Pico firmware currently has no loader GPIO; unknown lines are ignored
-/// by `main_bluetooth.py`. The app still sends `LOADER|UP` / `LOADER|DOWN`
-/// so a future firmware hook-up does not require another UI change.
-/// Emergency stop sends `LOADER|DOWN` (safe) then `S`.
+/// Pico firmware drives two positional hobby servos together:
+/// GP16 (physical 21) and GP17 (physical 22). `LOADER|UP` / `LOADER|DOWN`
+/// are handled in both MANUAL and AUTOMATIC. Emergency stop sends
+/// `LOADER|DOWN` (safe) then `S`; firmware also lowers the bucket on `S`.
 class BluetoothService extends ChangeNotifier {
   BluetoothService() : _offline = false;
 
