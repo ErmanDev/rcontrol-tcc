@@ -28,6 +28,7 @@ class EmergencyStopButton extends StatelessWidget {
           foregroundColor: Colors.white,
           disabledBackgroundColor: const Color(0xFFE53935).withValues(alpha: 0.35),
           textStyle: const TextStyle(
+            fontFamily: 'Roboto',
             fontWeight: FontWeight.w900,
             fontSize: 18,
             letterSpacing: 1.2,

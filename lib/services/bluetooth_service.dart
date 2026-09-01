@@ -11,10 +11,33 @@ enum BtConnectionStatus {
   failed,
 }
 
+/// Bluetooth serial protocol (newline-terminated):
+///
+/// | Command       | Meaning                                      |
+/// | ------------- | -------------------------------------------- |
+/// | `F` / `B` / `L` / `R` | Manual drive (blocked in AUTOMATIC) |
+/// | `S`           | Emergency stop (motors + leave AUTOMATIC)    |
+/// | `E|<duty>`    | Motor PWM duty 0–65535                       |
+/// | `AUTOMATIC` / `MANUAL` | Mode switch                    |
+/// | `LOADER|UP`   | Request loader bucket up                     |
+/// | `LOADER|DOWN` | Request loader bucket down (closed / safe)   |
+///
+/// Pico firmware drives two positional hobby servos together:
+/// GP16 (physical 21) and GP17 (physical 22). `LOADER|UP` / `LOADER|DOWN`
+/// are handled in both MANUAL and AUTOMATIC. Emergency stop sends
+/// `LOADER|DOWN` (safe) then `S`; firmware also lowers the bucket on `S`.
 class BluetoothService extends ChangeNotifier {
-  BluetoothService();
+  BluetoothService() : _offline = false;
 
-  final FlutterBluetoothSerial _bluetooth = FlutterBluetoothSerial.instance;
+  /// Widget/unit tests: no radio, no `FlutterBluetoothSerial` plugin.
+  @visibleForTesting
+  BluetoothService.fake() : _offline = true;
+
+  final bool _offline;
+  FlutterBluetoothSerial? _plugin;
+
+  FlutterBluetoothSerial get _bluetooth =>
+      _plugin ??= FlutterBluetoothSerial.instance;
 
   BluetoothConnection? _connection;
   StreamSubscription<Uint8List>? _inputSub;
@@ -25,7 +48,9 @@ class BluetoothService extends ChangeNotifier {
   String? _lastError;
 
   bool _automaticMode = false;
+  bool _loaderUp = false;
   int _speedDuty = 25000;
+  final List<String> _sentCommands = [];
 
   BtConnectionStatus get status => _status;
   List<BluetoothDevice> get bonded => _bonded;
@@ -33,7 +58,13 @@ class BluetoothService extends ChangeNotifier {
   String? get lastError => _lastError;
   bool get isConnected => _status == BtConnectionStatus.connected;
   bool get automaticMode => _automaticMode;
+  bool get loaderUp => _loaderUp;
   int get speedDuty => _speedDuty;
+
+  /// Outgoing command lines without the trailing newline. Fake mode only
+  /// (real sends still go over the serial socket).
+  @visibleForTesting
+  List<String> get sentCommands => List.unmodifiable(_sentCommands);
 
   Future<void> init() async {
     await ensureEnabled();
@@ -93,6 +124,7 @@ class BluetoothService extends ChangeNotifier {
     _connection = null;
     _status = BtConnectionStatus.disconnected;
     _device = null;
+    _loaderUp = false;
     notifyListeners();
 
     if (conn != null) {
@@ -103,6 +135,17 @@ class BluetoothService extends ChangeNotifier {
   }
 
   Future<void> send(String command) async {
+    final line = command.endsWith('\n') ? command.substring(0, command.length - 1) : command;
+    if (_offline) {
+      if (_status != BtConnectionStatus.connected) {
+        _lastError = 'Not connected';
+        notifyListeners();
+        throw StateError('Not connected');
+      }
+      _sentCommands.add(line);
+      return;
+    }
+
     final conn = _connection;
     if (conn == null || !conn.isConnected) {
       _lastError = 'Not connected';
@@ -135,10 +178,49 @@ class BluetoothService extends ChangeNotifier {
     await send(command);
   }
 
+  /// Sends `LOADER|UP` or `LOADER|DOWN`. Reverts [loaderUp] if the write fails.
+  Future<void> setLoaderUp(bool up) async {
+    final previous = _loaderUp;
+    _loaderUp = up;
+    notifyListeners();
+    try {
+      await send(up ? 'LOADER|UP' : 'LOADER|DOWN');
+    } catch (_) {
+      _loaderUp = previous;
+      notifyListeners();
+      rethrow;
+    }
+  }
+
   Future<void> emergencyStop() async {
     _automaticMode = false;
+    _loaderUp = false;
     notifyListeners();
-    await send('S');
+    Object? firstError;
+    try {
+      await send('LOADER|DOWN');
+    } catch (e) {
+      firstError = e;
+    }
+    try {
+      await send('S');
+    } catch (e) {
+      firstError ??= e;
+    }
+    if (firstError != null) throw firstError;
+  }
+
+  /// Marks the fake service connected so widget tests can render a live UI.
+  @visibleForTesting
+  void debugSetConnected({bool connected = true}) {
+    _status = connected
+        ? BtConnectionStatus.connected
+        : BtConnectionStatus.disconnected;
+    if (!connected) {
+      _device = null;
+      _loaderUp = false;
+    }
+    notifyListeners();
   }
 
   void _handleDisconnect() {
@@ -146,12 +228,24 @@ class BluetoothService extends ChangeNotifier {
     _inputSub = null;
     _status = BtConnectionStatus.disconnected;
     _device = null;
+    _loaderUp = false;
     notifyListeners();
   }
 
   @override
   void dispose() {
-    unawaited(disconnect());
+    final sub = _inputSub;
+    _inputSub = null;
+    final conn = _connection;
+    _connection = null;
+    unawaited(() async {
+      await sub?.cancel();
+      if (conn != null) {
+        try {
+          await conn.close();
+        } catch (_) {}
+      }
+    }());
     super.dispose();
   }
 }
