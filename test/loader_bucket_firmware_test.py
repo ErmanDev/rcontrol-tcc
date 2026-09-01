@@ -38,12 +38,14 @@ def _load_firmware():
             self.pin = pin
             self._freq = None
             self.duty = None
+            self.duty_history = []
 
         def freq(self, f):
             self._freq = f
 
         def duty_u16(self, d):
             self.duty = d
+            self.duty_history.append(d)
 
     class UART:
         def __init__(self, *args, **kwargs):
@@ -89,10 +91,27 @@ class LoaderFirmwareTest(unittest.TestCase):
         self.assertGreater(mid, 1950)
         self.assertLess(mid, 7803)
 
+    def _assert_sweep_invert(self, pwm1_history, pwm2_history, start_angle, target_angle):
+        """Both horns step together; GP17 duty is always 180-angle (invert)."""
+        step = FW.LOADER_STEP_DEG if target_angle >= start_angle else -FW.LOADER_STEP_DEG
+        expected = list(range(start_angle, target_angle, step)) + [target_angle]
+        self.assertEqual(len(pwm1_history), len(expected))
+        self.assertEqual(len(pwm2_history), len(expected))
+        self.assertGreater(len(expected), 1)
+        for angle, d1, d2 in zip(expected, pwm1_history, pwm2_history):
+            self.assertNotIn(angle, (0, 180))
+            self.assertEqual(d1, FW._positional_servo_duty_u16(angle))
+            # Invert on GP17: UP 150 -> pin17 duty for 30; DOWN 90 -> both 90.
+            self.assertEqual(d2, FW._positional_servo_duty_u16(180 - angle))
+
     def test_boot_is_down_and_servos_are_mirrored(self):
         self.assertTrue(FW.LOADER_SERVO_2_INVERT)
         self.assertEqual(FW.LOADER_DOWN_ANGLE, 90)
         self.assertEqual(FW.LOADER_UP_ANGLE, 150)
+        self.assertEqual(FW.LOADER_STEP_DEG, 2)
+        self.assertEqual(FW.LOADER_STEP_DELAY_MS, 20)
+        self.assertNotIn(FW.LOADER_DOWN_ANGLE, (0, 180))
+        self.assertNotIn(FW.LOADER_UP_ANGLE, (0, 180))
         self.assertLess(abs(FW.LOADER_UP_ANGLE - FW.LOADER_DOWN_ANGLE), 90)
 
         bucket = FW.LoaderBucket()
@@ -104,13 +123,49 @@ class LoaderFirmwareTest(unittest.TestCase):
         self.assertEqual(bucket._pwm1.duty, down_duty)
         self.assertEqual(bucket._pwm2.duty, down_duty)
 
-        bucket.up()
+        bucket._pwm1.duty_history.clear()
+        bucket._pwm2.duty_history.clear()
+        delays = []
+        original_sleep = FW.time.sleep_ms
+
+        def record_sleep(ms):
+            delays.append(ms)
+
+        FW.time.sleep_ms = record_sleep
+        try:
+            bucket.up()
+        finally:
+            FW.time.sleep_ms = original_sleep
+
         self.assertTrue(bucket._up)
         up1 = FW._positional_servo_duty_u16(FW.LOADER_UP_ANGLE)
         up2 = FW._positional_servo_duty_u16(180 - FW.LOADER_UP_ANGLE)
+        self.assertEqual(up1, FW._positional_servo_duty_u16(150))
+        self.assertEqual(up2, FW._positional_servo_duty_u16(30))
         self.assertEqual(bucket._pwm1.duty, up1)
         self.assertEqual(bucket._pwm2.duty, up2)
         self.assertNotEqual(up1, up2)
+        self._assert_sweep_invert(
+            bucket._pwm1.duty_history,
+            bucket._pwm2.duty_history,
+            FW.LOADER_DOWN_ANGLE,
+            FW.LOADER_UP_ANGLE,
+        )
+        self.assertTrue(delays)
+        self.assertTrue(all(ms == FW.LOADER_STEP_DELAY_MS for ms in delays))
+
+        bucket._pwm1.duty_history.clear()
+        bucket._pwm2.duty_history.clear()
+        bucket.down()
+        self.assertFalse(bucket._up)
+        self.assertEqual(bucket._pwm1.duty, down_duty)
+        self.assertEqual(bucket._pwm2.duty, down_duty)
+        self._assert_sweep_invert(
+            bucket._pwm1.duty_history,
+            bucket._pwm2.duty_history,
+            FW.LOADER_UP_ANGLE,
+            FW.LOADER_DOWN_ANGLE,
+        )
 
     def test_loader_commands_work_in_automatic(self):
         motors = FW.Motors()
@@ -139,7 +194,24 @@ class LoaderFirmwareTest(unittest.TestCase):
         self.assertEqual(shim.LOADER_DOWN_ANGLE, 90)
         self.assertEqual(shim.LOADER_UP_ANGLE, 150)
         self.assertTrue(shim.LOADER_SERVO_2_INVERT)
+        self.assertEqual(shim.LOADER_STEP_DEG, 2)
+        self.assertEqual(shim.LOADER_STEP_DELAY_MS, 20)
         self.assertIs(shim.LoaderBucket, FW.LoaderBucket)
+
+    def test_loader_never_commands_0_or_180(self):
+        bucket = FW.LoaderBucket()
+        bucket._set_angle(0)
+        self.assertEqual(bucket._angle, 1)
+        self.assertEqual(bucket._pwm1.duty, FW._positional_servo_duty_u16(1))
+        self.assertEqual(bucket._pwm2.duty, FW._positional_servo_duty_u16(179))
+        bucket._set_angle(180)
+        self.assertEqual(bucket._angle, 179)
+        self.assertEqual(bucket._pwm1.duty, FW._positional_servo_duty_u16(179))
+        self.assertEqual(bucket._pwm2.duty, FW._positional_servo_duty_u16(1))
+        bucket._set_angle(-40)
+        self.assertEqual(bucket._angle, 1)
+        bucket._set_angle(200)
+        self.assertEqual(bucket._angle, 179)
 
 
 if __name__ == "__main__":
