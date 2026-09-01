@@ -21,11 +21,22 @@ enum BtConnectionStatus {
 /// | `AUTOMATIC` / `MANUAL` | Mode switch                    |
 /// | `LOADER|UP`   | Request loader bucket up                     |
 /// | `LOADER|DOWN` | Request loader bucket down (closed / safe)   |
+/// | `LOADER|ANGLE|<n>` | Live linked pose 0–180 (GP17 = 180-n) |
+/// | `LOADER|16|<n>` | Live raw left GP16 0–180                 |
+/// | `LOADER|17|<n>` | Live raw right GP17 0–180 (no invert)    |
 ///
 /// Pico firmware drives two positional hobby servos together:
-/// GP16 (physical 21) and GP17 (physical 22). `LOADER|UP` / `LOADER|DOWN`
-/// are handled in both MANUAL and AUTOMATIC. Emergency stop sends
+/// GP16 (physical 21) and GP17 (physical 22). Rest/DOWN is 0°, UP is 60°.
+/// `LOADER|UP` / `LOADER|DOWN` are handled in both MANUAL and AUTOMATIC.
+/// Live cal lines apply immediately (no sweep). Emergency stop sends
 /// `LOADER|DOWN` (safe) then `S`; firmware also lowers the bucket on `S`.
+///
+/// Linked invert: logical [leftAngle] on GP16, GP17 gets `180 - left`.
+int loaderInvertedRightAngle(int leftAngle) {
+  final left = leftAngle.clamp(0, 180);
+  return 180 - left;
+}
+
 class BluetoothService extends ChangeNotifier {
   BluetoothService() : _offline = false;
 
@@ -190,6 +201,24 @@ class BluetoothService extends ChangeNotifier {
       notifyListeners();
       rethrow;
     }
+  }
+
+  /// Live linked pose: `LOADER|ANGLE|<n>`. GP16=n, GP17=180-n on firmware.
+  Future<void> setLoaderLinkedAngle(int angle) async {
+    final clamped = angle.clamp(0, 180);
+    await send('LOADER|ANGLE|$clamped');
+  }
+
+  /// Live raw left horn: `LOADER|16|<n>` (no invert).
+  Future<void> setLoaderPin16(int angle) async {
+    final clamped = angle.clamp(0, 180);
+    await send('LOADER|16|$clamped');
+  }
+
+  /// Live raw right horn: `LOADER|17|<n>` (no invert — independent cal).
+  Future<void> setLoaderPin17(int angle) async {
+    final clamped = angle.clamp(0, 180);
+    await send('LOADER|17|$clamped');
   }
 
   Future<void> emergencyStop() async {

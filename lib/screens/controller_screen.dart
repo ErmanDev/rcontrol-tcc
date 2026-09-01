@@ -9,6 +9,7 @@ import '../widgets/loader_bucket_control.dart';
 import '../widgets/emergency_stop_button.dart';
 import '../widgets/speed_slider.dart';
 import 'connection_screen.dart';
+import 'loader_calibration_screen.dart';
 
 class ControllerScreen extends StatefulWidget {
   const ControllerScreen({super.key});
@@ -182,12 +183,31 @@ class _ControllerScreenState extends State<ControllerScreen> {
                     SizedBox(height: sectionGap),
                     Align(
                       alignment: Alignment.center,
-                      child: LoaderBucketControl(
-                        up: bt.loaderUp,
-                        enabled: bt.isConnected,
-                        compact: compact,
-                        onChanged: (up) =>
-                            _safeSend(() => bt.setLoaderUp(up)),
+                      child: Row(
+                        key: const Key('loaderBucketBar'),
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          LoaderBucketControl(
+                            up: bt.loaderUp,
+                            enabled: bt.isConnected,
+                            compact: compact,
+                            onChanged: (up) =>
+                                _safeSend(() => bt.setLoaderUp(up)),
+                          ),
+                          SizedBox(width: compact ? 8 : 10),
+                          _LoaderTestButton(
+                            enabled: bt.isConnected,
+                            compact: compact,
+                            onPressed: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      const LoaderCalibrationScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
                       ),
                     ),
                     SizedBox(height: sectionGap),
@@ -256,6 +276,52 @@ class _ControllerScreenState extends State<ControllerScreen> {
               ),
             );
           },
+        ),
+      ),
+    );
+  }
+}
+
+class _LoaderTestButton extends StatelessWidget {
+  const _LoaderTestButton({
+    required this.enabled,
+    required this.compact,
+    required this.onPressed,
+  });
+
+  final bool enabled;
+  final bool compact;
+  final VoidCallback onPressed;
+
+  static const _accent = Color(0xFF2EE6A6);
+  static const _panel = Color(0xFF1E2A33);
+  static const _border = Color(0xFF3A4A56);
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: _panel,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: _border),
+      ),
+      child: InkWell(
+        key: const Key('loaderTestButton'),
+        onTap: enabled ? onPressed : null,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 14 : 16,
+            vertical: compact ? 8 : 10,
+          ),
+          child: Text(
+            'Test',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: compact ? 13 : 14,
+              color: enabled ? _accent : Colors.white38,
+            ),
+          ),
         ),
       ),
     );

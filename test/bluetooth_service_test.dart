@@ -53,4 +53,40 @@ void main() {
     expect(bt.loaderUp, isFalse);
     expect(bt.sentCommands, ['LOADER|DOWN', 'S']);
   });
+
+  test('loaderInvertedRightAngle is 180-n', () {
+    expect(loaderInvertedRightAngle(0), 180);
+    expect(loaderInvertedRightAngle(60), 120);
+    expect(loaderInvertedRightAngle(90), 90);
+    expect(loaderInvertedRightAngle(-10), 180);
+    expect(loaderInvertedRightAngle(200), 0);
+  });
+
+  test('live cal methods send newline-stripped ANGLE/16/17 commands', () async {
+    final bt = fakeConnected();
+    addTearDown(bt.dispose);
+
+    await bt.setLoaderLinkedAngle(60);
+    await bt.setLoaderPin16(16);
+    await bt.setLoaderPin17(170);
+    await bt.setLoaderLinkedAngle(-4);
+    await bt.setLoaderPin17(400);
+    expect(bt.sentCommands, [
+      'LOADER|ANGLE|60',
+      'LOADER|16|16',
+      'LOADER|17|170',
+      'LOADER|ANGLE|0',
+      'LOADER|17|180',
+    ]);
+  });
+
+  test('live cal methods throw when disconnected', () async {
+    final bt = BluetoothService.fake();
+    addTearDown(bt.dispose);
+
+    await expectLater(bt.setLoaderLinkedAngle(10), throwsA(isA<StateError>()));
+    await expectLater(bt.setLoaderPin16(10), throwsA(isA<StateError>()));
+    await expectLater(bt.setLoaderPin17(10), throwsA(isA<StateError>()));
+    expect(bt.sentCommands, isEmpty);
+  });
 }

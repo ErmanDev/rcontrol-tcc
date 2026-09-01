@@ -7,7 +7,8 @@ Loader bucket: two positional SG90s on the same hinge (not 360°).
   LEFT  = GP16 (user marked 16)  — logical angle
   RIGHT = GP17 (user marked 17)  — mirrored 180-angle so the pair does not fight
   orange = signal, red = 5V shared, brown = GND to physical pin 23.
-  PWM is eased in 2° steps; never jump, never command 0° or 180°.
+  Rest/DOWN = 0°, UP = 60°. PWM eases 2° / 20ms for UP/DOWN.
+  Live cal (no sweep): LOADER|ANGLE|<n>, LOADER|16|<n>, LOADER|17|<n>.
 """
 
 import sys
@@ -39,16 +40,16 @@ SERVO_MAX_DUTY_U16 = 7803
 # Positional hobby servos at 50 Hz — not continuous-rotation 360° units.
 LOADER_SERVO_1_PIN = 16  # left, user marked 16
 LOADER_SERVO_2_PIN = 17  # right, user marked 17
-# Photo rest pose = DOWN: white bucket horizontal / level with the chassis top.
-# Centered SG90 horns are ~90°. Do not treat that photo as UP.
-LOADER_DOWN_ANGLE = 90   # photo rest, bucket level
-# Modest raise of the front plate from rest (+60°), clamped 0–180.
-# Not a 360° continuous servo and not a full 180 sweep (binds on the chassis).
-# Never command 0° or 180° as targets (end-stops bind; invert would slam the other horn).
-LOADER_UP_ANGLE = 150    # modest +60, NOT 180, NOT 360
+# Rest / default / photo-level bucket. LOADER|DOWN and boot go here.
+# Motion goes UP from 0, not down. Same 60° travel as the old 90→150.
+LOADER_DOWN_ANGLE = 0    # rest / default / photo-level bucket
+# Modest raise from rest (+60°). Not 150 from 0 (would smash the chassis).
+# Not a 360° continuous servo and not a full 180 sweep.
+LOADER_UP_ANGLE = 60     # go UP from 0, NOT 150, NOT 180, NOT 360
 # RIGHT servo (GP17) is on the opposite side of the same hinge, so it is mirrored.
 # Invert on GP17 is what stops them fighting: that pin gets 180-angle each step.
 # If the bucket twists instead of pivoting, set this False (or swap the plugs).
+# At DOWN: GP16=0, GP17=180. At UP: GP16=60, GP17=120.
 LOADER_SERVO_2_INVERT = True  # right servo is mirrored; GP17 gets 180-angle so the pair does not fight
 # Ease both horns together. Do not jump PWM in one shot (slams / fights).
 LOADER_STEP_DEG = 2
@@ -238,7 +239,7 @@ class LoaderBucket:
 
     LEFT (GP16) takes the logical angle. RIGHT (GP17) is inverted when
     LOADER_SERVO_2_INVERT is True (command 180-angle) so the pair does not
-    fight. Motion eases in LOADER_STEP_DEG steps; PWM is never jumped.
+    fight. UP/DOWN ease in LOADER_STEP_DEG steps; live cal writes immediately.
     """
 
     def __init__(self, pin1=LOADER_SERVO_1_PIN, pin2=LOADER_SERVO_2_PIN):
@@ -247,29 +248,39 @@ class LoaderBucket:
         self._pwm1.freq(50)
         self._pwm2.freq(50)
         self._up = False
-        # Boot rest pose: already at DOWN 90, so down() does not sweep.
+        # Boot rest pose: already at DOWN 0, so down() does not sweep.
         self._angle = LOADER_DOWN_ANGLE
         self.down()
         time.sleep_ms(SERVO_SETTLE_MS)
 
     def _clamp_command_angle(self, angle):
-        """Clamp 0–180, then keep targets off the 0° / 180° end-stops."""
-        angle = max(0, min(180, int(angle)))
-        if angle <= 0:
-            return 1
-        if angle >= 180:
-            return 179
-        return angle
+        """Clamp to 0–180. 0 and 180 are allowed (mirrored rest / end)."""
+        return max(0, min(180, int(angle)))
 
     def _set_angle(self, angle):
         """Write one logical angle to both horns (invert GP17 each step)."""
         angle = self._clamp_command_angle(angle)
         # Invert on GP17 stops them fighting: right horn gets 180-angle.
         angle2 = (180 - angle) if LOADER_SERVO_2_INVERT else angle
-        angle2 = max(0, min(180, int(angle2)))
+        angle2 = self._clamp_command_angle(angle2)
         self._pwm1.duty_u16(_positional_servo_duty_u16(angle))
         self._pwm2.duty_u16(_positional_servo_duty_u16(angle2))
         self._angle = angle
+
+    def set_linked_angle(self, angle):
+        """Live cal: GP16=angle, GP17=180-angle if invert. No sweep."""
+        self._set_angle(angle)
+
+    def set_left_raw(self, angle):
+        """Live cal: GP16 only. Last-angle follows left for later UP/DOWN."""
+        angle = self._clamp_command_angle(angle)
+        self._pwm1.duty_u16(_positional_servo_duty_u16(angle))
+        self._angle = angle
+
+    def set_right_raw(self, angle):
+        """Live cal: GP17 only, RAW (do not invert). Last-angle stays GP16."""
+        angle = self._clamp_command_angle(angle)
+        self._pwm2.duty_u16(_positional_servo_duty_u16(angle))
 
     def _sweep_to(self, target_angle):
         """Ease both servos together from last commanded angle to target."""
@@ -626,13 +637,33 @@ class Mower:
             return
         if cmd.startswith("LOADER|"):
             # Hopper is independent of drive; allowed in MANUAL and AUTOMATIC.
-            action = cmd.split("|", 1)[1]
-            if action == "UP":
-                self.loader.up()
-            elif action == "DOWN":
-                self.loader.down()
-            else:
-                print("Invalid loader command:", cmd)
+            parts = cmd.split("|")
+            if len(parts) == 2:
+                action = parts[1]
+                if action == "UP":
+                    self.loader.up()
+                elif action == "DOWN":
+                    self.loader.down()
+                else:
+                    print("Invalid loader command:", cmd)
+                return
+            if len(parts) == 3:
+                target = parts[1]
+                try:
+                    angle = int(parts[2])
+                except ValueError:
+                    print("Invalid loader command:", cmd)
+                    return
+                if target == "16":
+                    self.loader.set_left_raw(angle)
+                elif target == "17":
+                    self.loader.set_right_raw(angle)
+                elif target == "ANGLE":
+                    self.loader.set_linked_angle(angle)
+                else:
+                    print("Invalid loader command:", cmd)
+                return
+            print("Invalid loader command:", cmd)
             return
 
         mapped = self.MOVE_MAP.get(cmd)
