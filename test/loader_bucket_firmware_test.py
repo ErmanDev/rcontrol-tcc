@@ -100,16 +100,16 @@ class LoaderFirmwareTest(unittest.TestCase):
         self.assertGreater(len(expected), 1)
         for angle, d1, d2 in zip(expected, pwm1_history, pwm2_history):
             self.assertEqual(d1, FW._positional_servo_duty_u16(angle))
-            # Invert on GP17: UP 60 -> pin17 duty for 120; DOWN 0 -> pin17 180.
+            # Invert on GP17: UP 110 -> pin17 duty for 70; DOWN 0 -> pin17 180.
             self.assertEqual(d2, FW._positional_servo_duty_u16(180 - angle))
 
     def test_boot_is_down_and_servos_are_mirrored(self):
         self.assertTrue(FW.LOADER_SERVO_2_INVERT)
         self.assertEqual(FW.LOADER_DOWN_ANGLE, 0)
-        self.assertEqual(FW.LOADER_UP_ANGLE, 60)
+        self.assertEqual(FW.LOADER_UP_ANGLE, 110)
         self.assertEqual(FW.LOADER_STEP_DEG, 2)
         self.assertEqual(FW.LOADER_STEP_DELAY_MS, 20)
-        self.assertEqual(abs(FW.LOADER_UP_ANGLE - FW.LOADER_DOWN_ANGLE), 60)
+        self.assertEqual(abs(FW.LOADER_UP_ANGLE - FW.LOADER_DOWN_ANGLE), 110)
 
         bucket = FW.LoaderBucket()
         self.assertFalse(bucket._up)
@@ -139,8 +139,8 @@ class LoaderFirmwareTest(unittest.TestCase):
         self.assertTrue(bucket._up)
         up1 = FW._positional_servo_duty_u16(FW.LOADER_UP_ANGLE)
         up2 = FW._positional_servo_duty_u16(180 - FW.LOADER_UP_ANGLE)
-        self.assertEqual(up1, FW._positional_servo_duty_u16(60))
-        self.assertEqual(up2, FW._positional_servo_duty_u16(120))
+        self.assertEqual(up1, FW._positional_servo_duty_u16(110))
+        self.assertEqual(up2, FW._positional_servo_duty_u16(70))
         self.assertEqual(bucket._pwm1.duty, up1)
         self.assertEqual(bucket._pwm2.duty, up2)
         self.assertNotEqual(up1, up2)
@@ -191,7 +191,7 @@ class LoaderFirmwareTest(unittest.TestCase):
         self.assertEqual(shim.LOADER_SERVO_1_PIN, FW.LOADER_SERVO_1_PIN)
         self.assertEqual(shim.LOADER_SERVO_2_PIN, FW.LOADER_SERVO_2_PIN)
         self.assertEqual(shim.LOADER_DOWN_ANGLE, 0)
-        self.assertEqual(shim.LOADER_UP_ANGLE, 60)
+        self.assertEqual(shim.LOADER_UP_ANGLE, 110)
         self.assertTrue(shim.LOADER_SERVO_2_INVERT)
         self.assertEqual(shim.LOADER_STEP_DEG, 2)
         self.assertEqual(shim.LOADER_STEP_DELAY_MS, 20)

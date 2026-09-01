@@ -7,7 +7,8 @@ Loader bucket: two positional SG90s on the same hinge (not 360°).
   LEFT  = GP16 (user marked 16)  — logical angle
   RIGHT = GP17 (user marked 17)  — mirrored 180-angle so the pair does not fight
   orange = signal, red = 5V shared, brown = GND to physical pin 23.
-  Rest/DOWN = 0°, UP = 60°. PWM eases 2° / 20ms for UP/DOWN.
+  Down 0, Up 110 so physical lift can reach ~90°. PWM eases 2° / 20ms for UP/DOWN.
+  At UP: GP16=110, GP17=70 (180-110).
   Live cal (no sweep): LOADER|ANGLE|<n>, LOADER|16|<n>, LOADER|17|<n>.
 """
 
@@ -41,15 +42,15 @@ SERVO_MAX_DUTY_U16 = 7803
 LOADER_SERVO_1_PIN = 16  # left, user marked 16
 LOADER_SERVO_2_PIN = 17  # right, user marked 17
 # Rest / default / photo-level bucket. LOADER|DOWN and boot go here.
-# Motion goes UP from 0, not down. Same 60° travel as the old 90→150.
+# Down 0, Up 110 so physical lift can reach ~90° (110 covers mechanical slack).
 LOADER_DOWN_ANGLE = 0    # rest / default / photo-level bucket
-# Modest raise from rest (+60°). Not 150 from 0 (would smash the chassis).
-# Not a 360° continuous servo and not a full 180 sweep.
-LOADER_UP_ANGLE = 60     # go UP from 0, NOT 150, NOT 180, NOT 360
+# User: 60° from rest does not reach 90°. Use 110 to make it higher.
+# Not 180. Not 360.
+LOADER_UP_ANGLE = 110  # user: does not reach 90, use 110 to make it higher. Not 180. Not 360.
 # RIGHT servo (GP17) is on the opposite side of the same hinge, so it is mirrored.
 # Invert on GP17 is what stops them fighting: that pin gets 180-angle each step.
 # If the bucket twists instead of pivoting, set this False (or swap the plugs).
-# At DOWN: GP16=0, GP17=180. At UP: GP16=60, GP17=120.
+# At DOWN: GP16=0, GP17=180. At UP: GP16=110, GP17=70 (180-110).
 LOADER_SERVO_2_INVERT = True  # right servo is mirrored; GP17 gets 180-angle so the pair does not fight
 # Ease both horns together. Do not jump PWM in one shot (slams / fights).
 LOADER_STEP_DEG = 2
