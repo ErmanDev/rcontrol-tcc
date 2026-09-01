@@ -62,9 +62,15 @@ void main() {
         'test/goldens/$filename',
         '/opt/cursor/artifacts/$filename',
       ]) {
-        final file = File(path);
-        await file.parent.create(recursive: true);
-        await file.writeAsBytes(bytes);
+        try {
+          final file = File(path);
+          await file.parent.create(recursive: true);
+          await file.writeAsBytes(bytes);
+        } catch (_) {
+          // Artifact mount can fail in some VMs; goldens path is required.
+          if (!path.startsWith('test/goldens/')) continue;
+          rethrow;
+        }
       }
     });
   }
@@ -87,8 +93,9 @@ void main() {
     expect(find.text('Blade'), findsNothing);
     expect(find.byType(Slider), findsOneWidget); // speed only, not a rotary
     expect(find.byKey(const Key('loaderTestButton')), findsOneWidget);
+    expect(find.text('Test'), findsOneWidget);
     expect(
-      tester.widget<FilledButton>(find.byKey(const Key('loaderTestButton'))).onPressed,
+      tester.widget<InkWell>(find.byKey(const Key('loaderTestButton'))).onTap,
       isNull,
     );
 

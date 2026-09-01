@@ -299,27 +299,30 @@ class _LoaderTestButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: compact ? 32 : 40,
-      child: FilledButton(
+    return Material(
+      color: _panel,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: _border),
+      ),
+      child: InkWell(
         key: const Key('loaderTestButton'),
-        onPressed: enabled ? onPressed : null,
-        style: FilledButton.styleFrom(
-          backgroundColor: _panel,
-          foregroundColor: enabled ? _accent : Colors.white38,
-          disabledBackgroundColor: _panel,
-          disabledForegroundColor: Colors.white38,
-          padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 14),
-          minimumSize: Size(0, compact ? 32 : 40),
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          side: const BorderSide(color: _border),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          textStyle: TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: compact ? 13 : 14,
+        onTap: enabled ? onPressed : null,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 14 : 16,
+            vertical: compact ? 8 : 10,
+          ),
+          child: Text(
+            'Test',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: compact ? 13 : 14,
+              color: enabled ? _accent : Colors.white38,
+            ),
           ),
         ),
-        child: const Text('Test'),
       ),
     );
   }

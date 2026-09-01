@@ -61,9 +61,14 @@ void main() {
         'test/goldens/$filename',
         '/opt/cursor/artifacts/$filename',
       ]) {
-        final file = File(path);
-        await file.parent.create(recursive: true);
-        await file.writeAsBytes(bytes);
+        try {
+          final file = File(path);
+          await file.parent.create(recursive: true);
+          await file.writeAsBytes(bytes);
+        } catch (_) {
+          if (!path.startsWith('test/goldens/')) continue;
+          rethrow;
+        }
       }
     });
   }

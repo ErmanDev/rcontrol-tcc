@@ -68,12 +68,9 @@ class _LoaderCalibrationScreenState extends State<LoaderCalibrationScreen> {
       _gp16 = n;
       _gp17 = loaderInvertedRightAngle(n);
     });
-    final send = () => bt.setLoaderLinkedAngle(n);
+    _queueSend(() => bt.setLoaderLinkedAngle(n));
     if (flush) {
-      _pendingSend = send;
       _flushSend();
-    } else {
-      _queueSend(send);
     }
   }
 
@@ -83,12 +80,9 @@ class _LoaderCalibrationScreenState extends State<LoaderCalibrationScreen> {
       _gp16 = n;
       _linked = n;
     });
-    final send = () => bt.setLoaderPin16(n);
+    _queueSend(() => bt.setLoaderPin16(n));
     if (flush) {
-      _pendingSend = send;
       _flushSend();
-    } else {
-      _queueSend(send);
     }
   }
 
@@ -97,12 +91,9 @@ class _LoaderCalibrationScreenState extends State<LoaderCalibrationScreen> {
     setState(() {
       _gp17 = n;
     });
-    final send = () => bt.setLoaderPin17(n);
+    _queueSend(() => bt.setLoaderPin17(n));
     if (flush) {
-      _pendingSend = send;
       _flushSend();
-    } else {
-      _queueSend(send);
     }
   }
 
@@ -145,7 +136,7 @@ class _LoaderCalibrationScreenState extends State<LoaderCalibrationScreen> {
                             ),
                             SizedBox(height: compact ? 2 : 4),
                             Text(
-                              'Linked invert ON  ·  Right GP17: ${_gp17}° (180−$_linked)',
+                              'Linked invert ON  ·  Right GP17: $_gp17° (180−$_linked)',
                               style: TextStyle(
                                 fontSize: compact ? 11 : 12,
                                 color: enabled
