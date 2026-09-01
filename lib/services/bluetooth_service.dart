@@ -19,19 +19,19 @@ enum BtConnectionStatus {
 /// | `S`           | Emergency stop (motors + leave AUTOMATIC)    |
 /// | `E|<duty>`    | Motor PWM duty 0–65535                       |
 /// | `AUTOMATIC` / `MANUAL` | Mode switch                    |
-/// | `LOADER|UP`   | Request loader bucket up                     |
-/// | `LOADER|DOWN` | Request loader bucket down (closed / safe)   |
+/// | `LOADER|UP`   | Request loader bucket up (rest−90 = 0°)      |
+/// | `LOADER|DOWN` | Request rest 90° (switch off / plate level)  |
 /// | `LOADER|ANGLE|<n>` | Live linked pose 0–180 (GP17 = 180-n) |
 /// | `LOADER|16|<n>` | Live raw left GP16 0–180                 |
 /// | `LOADER|17|<n>` | Live raw right GP17 0–180 (no invert)    |
 ///
 /// Pico firmware drives two positional hobby servos together:
-/// GP16 (physical 21) and GP17 (physical 22). Rest/DOWN is 90°, UP is 170°.
-/// Default rest 90 so the bucket is NOT up at boot; invert still on.
+/// GP16 (physical 21) and GP17 (physical 22). Rest/DOWN (switch off) is 90°.
+/// UP (switch on) is rest−90 = 0° (not +90 toward 180). Invert still on.
 /// `LOADER|UP` / `LOADER|DOWN` are handled in both MANUAL and AUTOMATIC.
-/// Live cal lines apply immediately (no sweep). Emergency stop sends
+/// Live cal lines apply immediately (no sweep). On Bluetooth connect the
+/// app sends `LOADER|DOWN` once (never UP). Emergency stop sends
 /// `LOADER|DOWN` (safe) then `S`; firmware also lowers the bucket on `S`.
-/// On successful Bluetooth connect the phone sends `LOADER|DOWN` once (never UP).
 ///
 /// Linked invert: logical [leftAngle] on GP16, GP17 gets `180 - left`.
 int loaderInvertedRightAngle(int leftAngle) {
@@ -265,6 +265,8 @@ class BluetoothService extends ChangeNotifier {
   }
 
   /// Marks the fake service connected so widget tests can render a live UI.
+  /// Does not send `LOADER|DOWN` (use [debugCompleteSuccessfulConnect]
+  /// to exercise that path).
   @visibleForTesting
   void debugSetConnected({bool connected = true}) {
     _status = connected

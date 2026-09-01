@@ -100,23 +100,23 @@ class LoaderFirmwareTest(unittest.TestCase):
         self.assertGreater(len(expected), 1)
         for angle, d1, d2 in zip(expected, pwm1_history, pwm2_history):
             self.assertEqual(d1, FW._positional_servo_duty_u16(angle))
-            # Invert on GP17: UP 170 -> pin17 duty for 10; DOWN 90 -> pin17 90.
+            # Invert on GP17: UP 0 -> pin17 180; DOWN 90 -> pin17 90.
             self.assertEqual(d2, FW._positional_servo_duty_u16(180 - angle))
 
     def test_boot_is_down_and_servos_are_mirrored(self):
         self.assertTrue(FW.LOADER_SERVO_2_INVERT)
         self.assertEqual(FW.LOADER_DOWN_ANGLE, 90)
-        self.assertEqual(FW.LOADER_UP_ANGLE, 170)
+        self.assertEqual(FW.LOADER_UP_ANGLE, 0)
         self.assertEqual(FW.LOADER_STEP_DEG, 2)
         self.assertEqual(FW.LOADER_STEP_DELAY_MS, 20)
-        self.assertEqual(abs(FW.LOADER_UP_ANGLE - FW.LOADER_DOWN_ANGLE), 80)
+        self.assertEqual(abs(FW.LOADER_UP_ANGLE - FW.LOADER_DOWN_ANGLE), 90)
 
         bucket = FW.LoaderBucket()
         self.assertFalse(bucket._up)
         self.assertEqual(bucket._angle, 90)
         self.assertEqual(bucket._pwm1._freq, 50)
         self.assertEqual(bucket._pwm2._freq, 50)
-        # Rest pose: GP16=90, GP17=90 (invert). Not 0/180 (that raised the plate).
+        # Rest pose: GP16=90, GP17=90 with invert. Not 0/180. Not 110. Not 170.
         down1 = FW._positional_servo_duty_u16(90)
         down2 = FW._positional_servo_duty_u16(90)
         self.assertEqual(bucket._pwm1.duty, down1)
@@ -140,8 +140,8 @@ class LoaderFirmwareTest(unittest.TestCase):
         self.assertTrue(bucket._up)
         up1 = FW._positional_servo_duty_u16(FW.LOADER_UP_ANGLE)
         up2 = FW._positional_servo_duty_u16(180 - FW.LOADER_UP_ANGLE)
-        self.assertEqual(up1, FW._positional_servo_duty_u16(170))
-        self.assertEqual(up2, FW._positional_servo_duty_u16(10))
+        self.assertEqual(up1, FW._positional_servo_duty_u16(0))
+        self.assertEqual(up2, FW._positional_servo_duty_u16(180))
         self.assertEqual(bucket._pwm1.duty, up1)
         self.assertEqual(bucket._pwm2.duty, up2)
         self.assertNotEqual(up1, up2)
@@ -192,7 +192,7 @@ class LoaderFirmwareTest(unittest.TestCase):
         self.assertEqual(shim.LOADER_SERVO_1_PIN, FW.LOADER_SERVO_1_PIN)
         self.assertEqual(shim.LOADER_SERVO_2_PIN, FW.LOADER_SERVO_2_PIN)
         self.assertEqual(shim.LOADER_DOWN_ANGLE, 90)
-        self.assertEqual(shim.LOADER_UP_ANGLE, 170)
+        self.assertEqual(shim.LOADER_UP_ANGLE, 0)
         self.assertTrue(shim.LOADER_SERVO_2_INVERT)
         self.assertEqual(shim.LOADER_STEP_DEG, 2)
         self.assertEqual(shim.LOADER_STEP_DELAY_MS, 20)
