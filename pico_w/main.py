@@ -11,6 +11,11 @@ Loader bucket: two positional SG90s on the same hinge (not 360°).
   Switch on / Up: rest−90 = 0 (not +90 toward 180). GP16=0, GP17=180 with invert.
   PWM eases 2° / 20ms for UP/DOWN. Not 170. Not 110.
   Live cal (no sweep): LOADER|ANGLE|<n>, LOADER|16|<n>, LOADER|17|<n>.
+
+  Auto dump cycle: LOADER|UP arms a repeating loop owned by the Pico (not
+  the phone) — up, wait LOADER_CYCLE_PHASE_MS, down, wait, up again — so it
+  keeps running even if Bluetooth drops mid-cycle. LOADER|DOWN, live cal,
+  and STOP all cancel it.
 """
 
 import sys
@@ -56,6 +61,9 @@ LOADER_SERVO_2_INVERT = True  # right servo is mirrored; GP17 gets 180-angle so 
 # Ease both horns together. Do not jump PWM in one shot (slams / fights).
 LOADER_STEP_DEG = 2
 LOADER_STEP_DELAY_MS = 20
+# Auto dump cycle phase length (LOADER|UP arms it): up this long, down this
+# long, repeat — timed on the Pico's own clock via LoaderBucket.tick().
+LOADER_CYCLE_PHASE_MS = 4000
 
 PWM_FREQ_HZ = 1000
 INITIAL_SPEED = 25000
@@ -250,6 +258,8 @@ class LoaderBucket:
         self._pwm1.freq(50)
         self._pwm2.freq(50)
         self._up = False
+        self._cycle_active = False
+        self._cycle_phase_started = time.ticks_ms()
         # Boot rest pose: already at DOWN 90, so down() writes 90/90 without a sweep.
         # Invert still on: 180-90=90. Switch off / default rest / plate level.
         self._angle = LOADER_DOWN_ANGLE
@@ -272,16 +282,19 @@ class LoaderBucket:
 
     def set_linked_angle(self, angle):
         """Live cal: GP16=angle, GP17=180-angle if invert. No sweep."""
+        self.cancel_cycle()
         self._set_angle(angle)
 
     def set_left_raw(self, angle):
         """Live cal: GP16 only. Last-angle follows left for later UP/DOWN."""
+        self.cancel_cycle()
         angle = self._clamp_command_angle(angle)
         self._pwm1.duty_u16(_positional_servo_duty_u16(angle))
         self._angle = angle
 
     def set_right_raw(self, angle):
         """Live cal: GP17 only, RAW (do not invert). Last-angle stays GP16."""
+        self.cancel_cycle()
         angle = self._clamp_command_angle(angle)
         self._pwm2.duty_u16(_positional_servo_duty_u16(angle))
 
@@ -322,6 +335,37 @@ class LoaderBucket:
                 LOADER_SERVO_2_INVERT,
             )
         )
+
+    def start_cycle(self):
+        """Arm the repeating dump cycle: up now, then alternate down/up
+        every LOADER_CYCLE_PHASE_MS until stop_cycle()/cancel_cycle()."""
+        self._cycle_active = True
+        self._cycle_phase_started = time.ticks_ms()
+        self.up()
+        print("Loader cycle -> STARTED phase_ms={}".format(LOADER_CYCLE_PHASE_MS))
+
+    def stop_cycle(self):
+        """Cancel the cycle (if any) and park the bucket DOWN."""
+        self._cycle_active = False
+        self.down()
+
+    def cancel_cycle(self):
+        """Cancel the cycle without forcing a position (live cal takes over)."""
+        if self._cycle_active:
+            self._cycle_active = False
+            print("Loader cycle -> CANCELLED (live cal)")
+
+    def tick(self):
+        """Call every main-loop iteration. No-op unless a cycle is active."""
+        if not self._cycle_active:
+            return
+        if time.ticks_diff(time.ticks_ms(), self._cycle_phase_started) < LOADER_CYCLE_PHASE_MS:
+            return
+        self._cycle_phase_started = time.ticks_ms()
+        if self._up:
+            self.down()
+        else:
+            self.up()
 
 
 class ManualController:
@@ -584,8 +628,8 @@ class Mower:
         self.manual_speed = INITIAL_SPEED
 
     def emergency_stop(self):
-        # Safe hopper first, then existing drive STOP / leave AUTOMATIC.
-        self.loader.down()
+        # Safe hopper first (cancels any auto cycle), then drive STOP / leave AUTOMATIC.
+        self.loader.stop_cycle()
         self.mode = "MANUAL"
         self.auto.stop()
         self.motors.set_speed(self.manual_speed)
@@ -644,9 +688,9 @@ class Mower:
             if len(parts) == 2:
                 action = parts[1]
                 if action == "UP":
-                    self.loader.up()
+                    self.loader.start_cycle()
                 elif action == "DOWN":
-                    self.loader.down()
+                    self.loader.stop_cycle()
                 else:
                     print("Invalid loader command:", cmd)
                 return
@@ -682,6 +726,8 @@ class Mower:
         self.manual.handle(mapped)
 
     def tick(self):
+        # Loader dump cycle is independent of drive mode.
+        self.loader.tick()
         if self.mode == "AUTOMATIC":
             # Only range while mowing a row. Timed backup/turn/shift
             # would overshoot if each loop waited on 5 ultrasonic samples.

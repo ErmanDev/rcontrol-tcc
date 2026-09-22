@@ -306,6 +306,87 @@ class LoaderFirmwareTest(unittest.TestCase):
         mower.handle_line("LOADER|ANGLE|abc")
         self.assertEqual(loader._angle, 180)
 
+    def _patch_ticks_ms(self):
+        """Returns (fake_now list, restore()) so tests can drive the clock
+        LoaderBucket.tick() reads, instead of the always-0 stub from setup."""
+        fake_now = [0]
+        original = FW.time.ticks_ms
+        FW.time.ticks_ms = lambda: fake_now[0]
+
+        def restore():
+            FW.time.ticks_ms = original
+
+        return fake_now, restore
+
+    def test_loader_up_arms_a_repeating_cycle(self):
+        mower, loader = self._mower()
+        fake_now, restore = self._patch_ticks_ms()
+        try:
+            mower.handle_line("LOADER|UP")
+            self.assertTrue(loader._up)
+            self.assertTrue(loader._cycle_active)
+
+            # Phase not elapsed yet: no change.
+            fake_now[0] += FW.LOADER_CYCLE_PHASE_MS - 1
+            mower.tick()
+            self.assertTrue(loader._up)
+
+            # Phase elapses: cycle flips down on its own, no LOADER|DOWN sent.
+            fake_now[0] += 1
+            mower.tick()
+            self.assertFalse(loader._up)
+
+            # Next phase flips back up again.
+            fake_now[0] += FW.LOADER_CYCLE_PHASE_MS
+            mower.tick()
+            self.assertTrue(loader._up)
+        finally:
+            restore()
+
+    def test_loader_down_cancels_the_cycle(self):
+        mower, loader = self._mower()
+        fake_now, restore = self._patch_ticks_ms()
+        try:
+            mower.handle_line("LOADER|UP")
+            self.assertTrue(loader._cycle_active)
+
+            mower.handle_line("LOADER|DOWN")
+            self.assertFalse(loader._cycle_active)
+            self.assertFalse(loader._up)
+
+            # No further toggling once cancelled, however much time passes.
+            fake_now[0] += FW.LOADER_CYCLE_PHASE_MS * 3
+            mower.tick()
+            self.assertFalse(loader._up)
+        finally:
+            restore()
+
+    def test_live_cal_cancels_the_cycle_without_forcing_a_position(self):
+        mower, loader = self._mower()
+        fake_now, restore = self._patch_ticks_ms()
+        try:
+            mower.handle_line("LOADER|UP")
+            self.assertTrue(loader._cycle_active)
+
+            mower.handle_line("LOADER|ANGLE|45")
+            self.assertFalse(loader._cycle_active)
+            self.assertEqual(loader._angle, 45)
+
+            fake_now[0] += FW.LOADER_CYCLE_PHASE_MS * 2
+            mower.tick()
+            self.assertEqual(loader._angle, 45)
+        finally:
+            restore()
+
+    def test_emergency_stop_cancels_the_cycle(self):
+        mower, loader = self._mower()
+        mower.handle_line("LOADER|UP")
+        self.assertTrue(loader._cycle_active)
+
+        mower.handle_line("S")
+        self.assertFalse(loader._cycle_active)
+        self.assertFalse(loader._up)
+
 
 if __name__ == "__main__":
     unittest.main()
